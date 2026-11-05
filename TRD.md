@@ -126,7 +126,7 @@ dotnet tool restore
 env Azure__SubscriptionId=<구독 ID> Azure__Location=koreacentral Azure__ResourceGroup=rg-haru dotnet aspire deploy --clear-cache --non-interactive
 ```
 - `--clear-cache`는 필수이다. 없으면 Aspire가 매개변수를 `~/.aspire/deployments/<해시>/production.json`에 평문으로 저장하고, 저장된 값이 환경 변수보다 앞선다.
-- 배포 결과(2026-11-05): 28단계 모두 성공, 3분 31초. 첫 시도는 Express 한도로 실패했고, 환경 모드를 고정한 두 번째 시도가 성공했다. 확인한 것: `/health` 200, `/api/config`, `/api/sample`, 보안 헤더, 브라우저 UI 테스트 12건(`.ics` 내보내기 포함, 내부 `mcp` 호출 증명), Log Analytics의 `api`·`mcp` 행이다. 토큰은 `unset`이므로 `aiAvailable`은 `false`이고 화면은 기록된 실행을 재생한다.
+- 배포 결과(2026-11-05): 28단계 모두 성공, 3분 31초. 첫 시도는 Express 한도로 실패했고, 환경 모드를 고정한 두 번째 시도가 성공했다. 확인한 것: `/health` 200, `/api/config`, `/api/sample`, 보안 헤더, 브라우저 UI 테스트 12건(`.ics` 내보내기 포함, 내부 `mcp` 호출 증명), Log Analytics의 `api`·`mcp` 행이다. 프로브(Liveness `/alive`, Readiness `/health`)를 더한 재배포(14:07, 1분 32초)도 성공했고, `/alive`·`/health`·보안 헤더·UI 테스트 12건을 다시 통과했다. 토큰은 `unset`이므로 `aiAvailable`은 `false`이고 화면은 기록된 실행을 재생한다.
 - 비용: 월 약 21~23달러(유휴, 약 하루 0.7달러)로 추정한다. 목록 가격이며 청구서는 확인하지 않았다. 지우려면 `az group delete -n rg-haru --yes`를 실행한다.
 
 ## 8. 관측과 운영

@@ -193,6 +193,20 @@ Permissions: the deploying account has Owner on the subscription (needed for the
 | `node test-noai.mjs` against the live URL | ✅ 12/12, including `.ics` export (6 VEVENTs), which calls the internal `mcp` |
 | Log Analytics (`AppRequests`, `AppTraces`) | ✅ rows for roles `api` and `mcp` within one minute |
 
+### Redeploy proof (14:06–14:09 KST)
+
+The redeploy adds the liveness and readiness probes, the MCP tool-cache warm-up, security headers on error responses, and an atomic usage limiter. The commit is `fff0a82`.
+
+| Check | Result |
+|-------|--------|
+| `dotnet aspire deploy --clear-cache --non-interactive` | ✅ succeeded in 1 min 32 s; new revisions `api--0000001` and `mcp--0000001` Running and Healthy |
+| Probes (`az containerapp show`) | ✅ `Liveness` (`/alive`) and `Readiness` (`/health`) on both apps |
+| Ingress | ✅ `api` external, `mcp` internal only |
+| `/alive`, `/health`, `/api/config` | ✅ 200; `aiAvailable:false` |
+| Security headers on `/` | ✅ CSP, HSTS, nosniff, X-Frame-Options, Referrer-Policy, Permissions-Policy, COOP |
+| `node test-noai.mjs` against the live URL | ✅ 12/12, including `.ics` export through the internal `mcp` |
+| Console log of `api` | ✅ no "Tool not found in cache" warning |
+
 ---
 
 ## 8. Files to Generate
