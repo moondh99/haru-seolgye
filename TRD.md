@@ -117,7 +117,7 @@ flowchart TD
   - 상태 점검: 두 앱 모두 HTTP 프로브를 쓴다. liveness는 `/alive`(15초 주기, 제한 5초, 실패 5회), readiness는 `/health`(10초 주기, 제한 5초, 실패 3회)이다. 계획 1회가 CPU를 오래 쓰므로 liveness를 느슨하게 잡았다. 프로브 API(`WithHttpProbe`)는 Aspire 평가용 API이다.
   - 환경 모드: AppHost가 `environmentMode: WorkloadProfiles`(API 버전 `2026-03-02-preview`)를 직접 지정한다. 모드를 지정하지 않으면 이 구독에서 환경이 Express 모드로 만들어져 고정 세션(`ExpressStickySessionsNotSupported`)과 .NET 런타임 설정(`ExpressDotnetRuntimeNotSupported`)을 거부했다. 이미 만든 Express 환경은 바꿀 수 없어 지우고 다시 만들었다(TDD 14).
 - 비밀값: 매개변수 `copilot-token`이 Container Apps secret `copilot-github-token`이 되고, api에만 환경 변수 `COPILOT_GITHUB_TOKEN`으로 들어간다. secret은 빈 값을 둘 수 없어 기본값이 `unset`이다. api는 `unset`을 토큰 없음으로 처리한다. Key Vault는 쓰지 않는다(TDD 5). 파일에는 비밀값을 쓰지 않는다.
-  - 실제 토큰은 `scripts/set-copilot-token.sh`가 secret에 넣고 리비전을 다시 시작한다. 다시 배포하면 secret이 `unset`으로 돌아가므로 배포 때 `Parameters__copilot-token`을 함께 넘기거나 스크립트를 다시 실행한다.
+  - 실제 토큰은 `scripts/set-copilot-token.sh`가 secret에 넣고 리비전을 다시 시작한다. 토큰은 표준 입력으로 `az`에 들어가며 명령줄 인수에 나타나지 않는다. `ghp_`, `gho_` 토큰은 거부한다. 두 번 붙여 넣은 값과 공백이 든 값도 거부한다. 다시 배포하면 secret이 `unset`으로 돌아가므로 배포 때 `Parameters__copilot-token`을 함께 넘기거나 스크립트를 다시 실행한다.
 - 이미지: `linux-x64`, glibc 기반 `aspnet:10.0`이다. api 약 588 MB, mcp 약 238 MB이다(로컬 빌드 기준). NuGet 패키지가 Copilot CLI 런타임을 빌드 때 내려받으므로 빌드에 `github.com` 접속이 필요하다.
 - 선행 조건: `az login`, 구독 소유자 권한, Docker, 리소스 공급자 5개 등록(Microsoft.App, ContainerRegistry, ManagedIdentity, OperationalInsights, Insights)이다.
 - 배포 명령이다. 구독 ID는 실행할 때 입력하고 파일에 쓰지 않는다. 토큰을 함께 넣으려면 `Parameters__copilot-token`을 환경 변수로 더한다.
@@ -151,6 +151,7 @@ env Azure__SubscriptionId=<구독 ID> Azure__Location=koreacentral Azure__Resour
 ## 10. 테스트와 완료 기준
 ```bash
 dotnet test                                           # 단위·통합 테스트. 2026-11-05 결과: Mcp 421건, Api 850건, 실패 0건
+python3 -m unittest discover -s tests/scripts        # 토큰 스크립트 오프라인 테스트 4건. Azure를 호출하지 않는다
 python3 tests/eval/smoke_plan.py --url <주소>          # 실서버 계획 1회 점검. --save는 기록을 저장한다
 python3 tests/eval/injection_eval.py --url <주소>      # 프롬프트 주입 11건. 사람이 실행한다
 ```

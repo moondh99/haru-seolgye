@@ -59,7 +59,7 @@ env Azure__SubscriptionId=<구독 ID> Azure__Location=koreacentral Azure__Resour
 ## 라이브 AI 켜기
 
 1. GitHub에서 세분화된 개인 액세스 토큰(PAT)을 만든다. 계정 권한 "Copilot Requests"만 준다.
-2. `scripts/set-copilot-token.sh`를 실행하고 토큰을 입력한다. 스크립트가 Container Apps secret `copilot-github-token`을 바꾸고 리비전을 다시 시작한다.
+2. `scripts/set-copilot-token.sh`를 실행하고 토큰을 입력한다. 입력은 화면에 보이지 않는다. 스크립트는 토큰을 표준 입력으로 `az`에 넘긴다. 토큰은 명령줄 인수에 나타나지 않는다. 스크립트가 Container Apps secret `copilot-github-token`을 바꾸고 리비전을 다시 시작한다.
 3. `GET /api/config`가 `aiAvailable: true`를 돌려주면 입력마다 에이전트가 실제로 실행된다.
 
 다시 배포하면 secret이 `unset`으로 돌아간다. 배포 때 `Parameters__copilot-token`을 함께 넘기거나, 배포 뒤에 스크립트를 다시 실행한다. 토큰을 지우려면 `scripts/set-copilot-token.sh --clear`를 실행한다.
@@ -72,7 +72,7 @@ src/Haru.ServiceDefaults/ OpenTelemetry, 상태 점검, 복원력
 src/Haru.Api/             API, 정적 UI, 에이전트, 워크플로우
 src/Haru.Mcp/             MCP 서버 (도구 4종)
 prompts/                  에이전트별 instructions
-tests/                    단위·통합 테스트, 평가 스크립트(eval/)
+tests/                    단위·통합 테스트, 스크립트 테스트(scripts/), 평가 스크립트(eval/)
 scripts/                  라이브 AI 켜기
 docs/                     API 계약, 다이어그램
 ```

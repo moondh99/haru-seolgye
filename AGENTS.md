@@ -12,7 +12,7 @@ Read `PRD.md`, `TRD.md`, and `TDD.md` before you change the design.
 | `src/Haru.AppHost` | Aspire AppHost. It defines the Azure resources |
 | `src/Haru.ServiceDefaults` | OpenTelemetry, health checks, service discovery |
 | `prompts/*.md` | One instruction file for each agent |
-| `tests/` | `Haru.Mcp.Tests`, `Haru.Api.Tests`, `eval/` (scripts that you run by hand) |
+| `tests/` | `Haru.Mcp.Tests`, `Haru.Api.Tests`, `scripts/` (offline tests for `scripts/`), `eval/` (scripts that you run by hand) |
 | `docs/` | `api-contract.md`, `diagrams/*.mmd` |
 
 ## Commands (run from the repository root)
@@ -21,6 +21,7 @@ Read `PRD.md`, `TRD.md`, and `TDD.md` before you change the design.
 | Restore tools | `dotnet tool restore` |
 | Build | `dotnet build` |
 | Test | `dotnet test` |
+| Test the scripts | `python3 -m unittest discover -s tests/scripts` |
 | Run all services | `dotnet run --project src/Haru.AppHost` |
 | Run one service | `dotnet run --project src/Haru.Mcp`, then `dotnet run --project src/Haru.Api` |
 | Smoke test | `python3 tests/eval/smoke_plan.py` |

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Enable live AI on the deployed Haru API.
 # The token is stored as the Container Apps secret "copilot-github-token". No file stores it.
+# The token goes to az through stdin, not through the command line, so `ps` does not show it.
 #
 # Create the token first: GitHub > Settings > Developer settings > Fine-grained personal access tokens.
 # Give it the account permission "Copilot Requests" and nothing else.
@@ -28,12 +29,21 @@ else
   case "$TOKEN" in
     github_pat_*) ;;
     ghp_*) echo "Classic tokens (ghp_) are rejected by the Copilot SDK. Create a fine-grained token." >&2; exit 1 ;;
+    gho_*) echo "Do not copy a personal login token (gho_) to Azure. Create a fine-grained token." >&2; exit 1 ;;
     *) echo "Warning: a fine-grained token starts with 'github_pat_'." >&2 ;;
   esac
+  # Hidden input makes a double paste easy. The Copilot runtime then rejects the token.
+  if [[ "$TOKEN" == *github_pat_*github_pat_* ]]; then
+    echo "The token was pasted more than once. Paste it one time only." >&2; exit 1
+  fi
+  if [[ "$TOKEN" =~ [[:space:]] ]]; then
+    echo "The token contains a space. Copy it again." >&2; exit 1
+  fi
   EXPECT="true"
 fi
 
-az containerapp secret set -g "$RG" -n "$APP" --secrets "$SECRET=$TOKEN" -o none
+# printf is a shell builtin. az reads "@/dev/stdin" as the argument value.
+printf '%s=%s' "$SECRET" "$TOKEN" | az containerapp secret set -g "$RG" -n "$APP" --secrets @/dev/stdin -o none
 unset TOKEN
 
 # Secrets are read when a replica starts, so restart the active revision.
