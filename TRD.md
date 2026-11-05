@@ -127,7 +127,7 @@ dotnet tool restore
 env Azure__SubscriptionId=<구독 ID> Azure__Location=koreacentral Azure__ResourceGroup=rg-haru dotnet aspire deploy --clear-cache --non-interactive
 ```
 - `--clear-cache`는 필수이다. 없으면 Aspire가 매개변수를 `~/.aspire/deployments/<해시>/production.json`에 평문으로 저장하고, 저장된 값이 환경 변수보다 앞선다.
-- 배포 결과(2026-11-05): 28단계 모두 성공, 3분 31초. 첫 시도는 Express 한도로 실패했고, 환경 모드를 고정한 두 번째 시도가 성공했다. 확인한 것: `/health` 200, `/api/config`, `/api/sample`, 보안 헤더, 브라우저 UI 테스트 12건(`.ics` 내보내기 포함, 내부 `mcp` 호출 증명), Log Analytics의 `api`·`mcp` 행이다. 프로브(Liveness `/alive`, Readiness `/health`)를 더한 재배포(14:07, 1분 32초)도 성공했고, `/alive`·`/health`·보안 헤더·UI 테스트 12건을 다시 통과했다. 그 뒤 스크립트로 토큰을 넣었다. `aiAvailable`이 `true`가 되었고, Azure 배포본에서 `smoke_plan.py`가 실제 AI로 유효한 계획을 만들었다(39.4초, 39.3초, 부하 78%).
+- 배포 결과(2026-11-05): 28단계 모두 성공, 3분 31초. 첫 시도는 Express 한도로 실패했고, 환경 모드를 고정한 두 번째 시도가 성공했다. 확인한 것: `/health` 200, `/api/config`, `/api/sample`, 보안 헤더, 브라우저 UI 테스트 12건(`.ics` 내보내기 포함, 내부 `mcp` 호출 증명), Log Analytics의 `api`·`mcp` 행이다. 프로브(Liveness `/alive`, Readiness `/health`)를 더한 재배포(14:07, 1분 32초)도 성공했고, `/alive`·`/health`·보안 헤더·UI 테스트 12건을 다시 통과했다. 그 뒤 스크립트로 토큰을 넣었다. `aiAvailable`이 `true`가 되었고, Azure 배포본에서 `smoke_plan.py`가 실제 AI로 유효한 계획을 만들었다(39.4초, 39.3초, 부하 78%). 세션 삭제를 더한 재배포(15:05, 96초) 뒤에도 실제 AI 계획이 37.4초에 유효했다(부하 84%).
 - 비용: 월 약 21~23달러(유휴, 약 하루 0.7달러)로 추정한다. 목록 가격이며 청구서는 확인하지 않았다. 지우려면 `az group delete -n rg-haru --yes`를 실행한다.
 
 ## 8. 관측과 운영
@@ -150,7 +150,7 @@ env Azure__SubscriptionId=<구독 ID> Azure__Location=koreacentral Azure__Resour
   - Copilot 런타임은 `HARU_COPILOT_HOME`(컨테이너에서는 `/tmp/haru-copilot`) 아래 `session-state/<id>/`에 프롬프트를 포함한 이벤트를 쓴다. 로컬과 컨테이너에서 확인했다(정리 코드 전 배포본에 13개, 약 312 KB).
   - `CopilotAgentRunner`는 에이전트 호출마다 `finally`에서 세션을 지운다(`CopilotHost.DeleteSessionAsync`, 제한 10초). 취소와 오류에도 지운다.
   - api는 Copilot 클라이언트를 시작할 때 `session-state` 폴더를 지운다(`ClearSessionState`). 이전 프로세스가 남긴 기록이 사라진다.
-  - 로컬 실측(2026-11-05): 계획 1회(32.4초) 뒤 남은 세션 폴더 0개, 9초에 중지한 뒤 0개이다. 단위 테스트 3건이 있다(`CopilotSessionCleanupTests`).
+  - 로컬 실측(2026-11-05): 계획 1회(32.4초) 뒤 남은 세션 폴더 0개, 9초에 중지한 뒤 0개, 주입 평가 11회 뒤 0개이다. Azure 배포본(15:05 재배포)에서도 계획 1회 뒤 세션 폴더가 없었다. 단위 테스트 3건이 있다(`CopilotSessionCleanupTests`).
   - 로그와 트레이스에는 사용자 텍스트를 넣지 않는다. 요청 경로, 도구 이름, 결과, 시간 같은 운영 기록은 Log Analytics가 30일 보관한다. 브라우저 `localStorage`는 `지우기`가 지운다. 화면의 "데이터 처리와 보존" 안내(`#privacy`)가 이 규칙을 보여 준다.
 - 책임 있는 AI: 실행 전에 외부 AI 전송을 고지한다. 모든 AI 결과에 `meta.aiGenerated`, "AI가 만든 제안" 배지, 고지 문구를 붙인다. `.ics` 설명 끝에 "AI가 만든 제안입니다(하루설계)"를 넣는다. 샘플과 재생에는 "AI 호출 없음"을 표시한다. 내보내기 전에 확인 대화상자를 띄운다. 모든 블록에 이유가 있다. 입력 글자 수 한도를 보여 주고 개인정보와 비밀번호를 넣지 말라고 안내한다.
 

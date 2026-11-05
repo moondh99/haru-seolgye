@@ -207,6 +207,20 @@ The redeploy adds the liveness and readiness probes, the MCP tool-cache warm-up,
 | `node test-noai.mjs` against the live URL | ✅ 12/12, including `.ics` export through the internal `mcp` |
 | Console log of `api` | ✅ no "Tool not found in cache" warning |
 
+### Redeploy proof (15:02–15:08 KST)
+
+The redeploy adds deletion of Copilot session records, the external-AI notice, the retention panel, and the BUSY retry. The commit is `1b845e9`. The token was read into memory before the deploy and set again after it.
+
+| Check | Result |
+|-------|--------|
+| `dotnet aspire deploy --clear-cache --non-interactive` | ✅ succeeded in 96 s; `api--0000004` and `mcp--0000002` Running |
+| `scripts/set-copilot-token.sh` (token through stdin) | ✅ `aiAvailable:true` |
+| `/health`, `/api/config` | ✅ 200; `aiAvailable:true` |
+| New UI served (`#ai-notice`, `BUSY_TRIES`) | ✅ after the old revision drained (about 1 min) |
+| `smoke_plan.py` against the live URL | ✅ PASS; `source: ai`, valid, load 84%, 37.4 s |
+| `/tmp/haru-copilot/session-state` in the `api` container after the run | ✅ no session folder (only `.session-operation-locks`) |
+| `~/.aspire/deployments` | ✅ deleted |
+
 ---
 
 ## 8. Files to Generate
@@ -224,6 +238,6 @@ The redeploy adds the liveness and readiness probes, the MCP tool-cache warm-up,
 
 > Current: Deployed
 
-1. Create a fine-grained PAT with only "Copilot Requests" and run `scripts/set-copilot-token.sh` to turn on live AI. Until then the app shows the labelled replay.
+1. Live AI is on. The fine-grained PAT expires on its set date. Before it expires, create a new PAT and run `scripts/set-copilot-token.sh` again.
 2. After any code change, run `dotnet aspire deploy --clear-cache --non-interactive` again, then repeat the live checks.
 3. Remove everything: `az group delete -n rg-haru --yes`.
