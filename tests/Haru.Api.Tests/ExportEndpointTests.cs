@@ -67,7 +67,7 @@ public class ExportEndpointTests(HaruApiFactory factory) : IClassFixture<HaruApi
     }
 
     [Fact]
-    public async Task PostExport_Validation_UsesTheRelaxedLoadLimitOfOne()
+    public async Task PostExport_Validation_UsesTheSameLoadLimitAsPlanning()
     {
         var before = factory.Mcp.Calls.Count;
         var blocks = new[] { Blk("b1", "집중", "09:00", "10:00"), Blk("b2", "마무리", "10:05", "11:00") };
@@ -75,9 +75,10 @@ public class ExportEndpointTests(HaruApiFactory factory) : IClassFixture<HaruApi
 
         var response = await Client.PostAsync("/api/export", request);
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         var check = factory.Mcp.Calls.Skip(before).First(c => c.Tool == "validate_schedule").Args;
-        Assert.Equal(1.0, check.GetProperty("maxLoad").GetDouble());
+        Assert.Equal(0.85, check.GetProperty("maxLoad").GetDouble());
+        Assert.DoesNotContain(factory.Mcp.Calls.Skip(before), c => c.Tool == "export_ics");
         Assert.Equal(5, check.GetProperty("bufferMinutes").GetInt32());
         Assert.Equal(("09:00", "11:00"), (check.GetProperty("workStart").GetString(), check.GetProperty("workEnd").GetString()));
     }

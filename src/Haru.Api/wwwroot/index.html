@@ -62,16 +62,18 @@
 
         <div class="actions">
           <button type="button" class="btn primary" id="btn-plan" aria-describedby="ai-notice">하루 계획 만들기</button>
-          <button type="button" class="btn" id="btn-sample">샘플로 체험</button>
+          <button type="button" class="btn" id="btn-example" aria-describedby="ai-notice">예시로 실제 AI 실행</button>
+          <button type="button" class="btn ghost" id="btn-sample">기록 데모 보기</button>
           <button type="button" class="btn ghost" id="btn-stop" hidden>중지</button>
         </div>
-        <p class="notice" id="ai-notice"><strong>‘하루 계획 만들기’를 누르면 입력한 글이 외부 AI 서비스(GitHub Copilot 모델)로 전송됩니다.</strong> 개인정보와 비밀번호는 넣지 마세요. ‘샘플로 체험’은 AI를 호출하지 않습니다. 로그인은 필요 없습니다.</p>
+        <p class="notice" id="ai-notice"><strong>‘하루 계획 만들기’는 입력한 글을, ‘예시로 실제 AI 실행’은 예시 글을 외부 AI 서비스(GitHub Copilot 모델)로 전송합니다.</strong> 개인정보와 비밀번호는 넣지 마세요. ‘기록 데모 보기’는 AI를 호출하지 않습니다. 로그인은 필요 없습니다.</p>
+        <button type="button" class="btn" id="btn-restore" hidden>이전 유효 계획 복원</button>
         <details class="privacy" id="privacy">
           <summary>데이터 처리와 보존</summary>
           <ul>
             <li>서버: 입력을 데이터베이스에 저장하지 않습니다. AI 세션 기록은 호출하는 동안에만 임시 폴더에 두고, 호출이 끝나면 지웁니다.</li>
             <li>로그: 입력한 글은 남기지 않습니다. 요청 경로, 도구 이름, 결과, 걸린 시간 같은 운영 기록은 30일 동안 보존합니다.</li>
-            <li>브라우저: 마지막 입력과 계획을 이 브라우저에만 저장합니다. ‘지우기’를 누르면 삭제됩니다.</li>
+            <li>브라우저: 현재 입력, 마지막 유효 계획과 그 이전 계획 1개를 이 브라우저에만 저장합니다. 계획에 사용한 입력과 시간 설정도 함께 저장합니다. ‘지우기’를 누르면 모두 삭제됩니다.</li>
             <li>AI 결과는 틀릴 수 있습니다. 시간 겹침과 근무 시간 규칙은 도구가 다시 검사합니다.</li>
           </ul>
         </details>
@@ -105,6 +107,16 @@
         <div class="vital"><dt>실행</dt><dd id="v-run">-</dd></div>
       </dl>
 
+      <div id="violations-box" class="review-box" hidden>
+        <h3>확정 전에 해결할 규칙 위반</h3>
+        <ul id="violations" class="plain"></ul>
+      </div>
+      <details id="review-box" class="review-box" hidden>
+        <summary>검증과 조정 근거</summary>
+        <p class="hint">실제로 받은 시간표와 도구 검사 결과입니다. 에이전트의 내부 사고 과정이 아닙니다.</p>
+        <ol id="review" class="plain"></ol>
+      </details>
+
       <div class="cols">
         <div>
           <ul class="legend" aria-label="범례">
@@ -121,9 +133,11 @@
       </div>
 
       <div class="actions">
+        <button type="button" class="btn" id="btn-confirm">이 계획 확정</button>
         <button type="button" class="btn primary" id="btn-export">캘린더(.ics)로 내보내기</button>
         <button type="button" class="btn" id="btn-copy">텍스트로 복사</button>
       </div>
+      <p class="hint" id="measurement">시간 절감 효과는 사용자 비교 실험 전까지 주장하지 않습니다.</p>
       <p class="disclaimer" id="res-disclaimer">AI가 만든 제안입니다. 시간 계산과 충돌 검사는 도구가 했지만, 일정의 최종 판단은 직접 해 주세요.</p>
     </section>
   </main>

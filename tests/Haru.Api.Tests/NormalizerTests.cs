@@ -130,8 +130,11 @@ public class NormalizerTests
     [Theory]
     [InlineData(null, "15:00")]
     [InlineData(45.0, "14:45")]
-    public void Build_FixedItemWithoutEnd_UsesItsMinutesOrOneHour(double? minutes, string expectedEnd) =>
+    public void Build_FixedItemWithoutEnd_UsesItsMinutesOrOneHour(double? minutes, string expectedEnd)
+    {
         Assert.Equal(expectedEnd, BuildFixed("14:00", null, minutes).Tasks[0].FixedEnd);
+        Assert.Equal(minutes is null ? "default" : "input", BuildFixed("14:00", null, minutes).Tasks[0].DurationSource);
+    }
 
     [Fact]
     public void Build_FixedItemEndingBeforeItStarts_FallsBackToOneHour() =>
@@ -372,6 +375,7 @@ public class NormalizerTests
         var result = Normalizer.Apply(Tasks, minutes, null);
 
         Assert.Equal(new[] { 90, 45, 60, 30 }, result.Select(t => t.Minutes));
+        Assert.Equal(new string?[] { "estimated", "input", null, "default" }, result.Select(t => t.DurationSource));
     }
 
     [Fact]

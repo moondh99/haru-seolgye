@@ -21,7 +21,7 @@ public static class HaruJson
 
 public sealed record TaskItem(
     string Id, string Title, int Minutes, int Priority, string? Deadline,
-    string? FixedStart, string? FixedEnd, string Kind, string? Note);
+    string? FixedStart, string? FixedEnd, string Kind, string? Note, string? DurationSource = null);
 
 public sealed record Block(string Id, string? TaskId, string Title, string Start, string End, string Kind, string Reason);
 

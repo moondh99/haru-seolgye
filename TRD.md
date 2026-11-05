@@ -45,12 +45,16 @@ flowchart TD
 ## 3. 데이터와 API 요약
 - 경로: `GET /api/config`(한도, `aiAvailable`), `POST /api/plan`(응답은 SSE 스트림), `GET /api/sample`(샘플 입력·결과, 기록된 실행 `events`), `POST /api/export`(`text/calendar`, `confirmed: true` 필요), `GET /health`, `GET /alive`이다. 필드와 오류 형식은 [docs/api-contract.md](docs/api-contract.md)가 정한다.
 - 한도: 입력 3,000자, 본문 64 KB, IP당 10분에 8회, 동시 계획 3개, 하루 250회(한국 표준시 KST), 계획 120초, 에이전트 호출 60초이다. 환경 변수로 바꾸는 값은 `HaruOptions.cs`에 있다.
-- 저장: 서버 코드에 데이터베이스가 없다. 사용 한도 계수는 메모리에만 둔다. 브라우저가 입력과 마지막 결과를 `localStorage`(`haru.v1`)에 저장하고 `지우기` 버튼이 지운다. Copilot 런타임이 남기는 파일은 9장에 있다.
+- 저장: 서버 코드에 데이터베이스가 없다. 사용 한도 계수는 메모리에만 둔다. 브라우저가 현재 입력, 마지막 유효 계획과 그 이전 계획 1개를 `localStorage`(`haru.v1`)에 저장한다. 각 계획에 사용한 입력·시간 설정·검증 이력도 저장한다. `지우기` 버튼이 모두 지운다. Copilot 런타임이 남기는 파일은 9장에 있다.
 - 도구 이벤트: 호출과 결과에 같은 `callId`를 넣는다. UI는 이 값으로 병렬 호출의 결과를 연결한다. 기록된 샘플에도 식별자를 넣는다.
-- 동시 실행 한도(`BUSY`, 503): UI가 5초 간격으로 최대 12번 다시 요청한다. 기다리는 동안 안내 배너와 "대기 중" 상태를 보여 주고, `중지`로 멈출 수 있다. 12번 뒤에도 `BUSY`이면 아래 대체 경로로 간다.
-- AI를 쓸 수 없을 때: 입력 오류(`INPUT_EMPTY`, `INPUT_TOO_LONG`, `BAD_REQUEST`)와 `NO_TASKS`를 뺀 모든 오류에서 UI가 `GET /api/sample`을 불러온다. 항상 "내 입력으로 만든 결과가 아닙니다"를 함께 보여 준다.
+- 동시 실행 한도(`BUSY`, 503): UI가 5초 간격으로 최대 12번 다시 요청한다. 기다리는 동안 안내 배너와 "대기 중" 상태를 보여 주고, `중지`로 멈출 수 있다. 12번 뒤에도 `BUSY`이면 오류와 다시 시도 버튼을 보인다.
+- 체험 경로: "예시로 실제 AI 실행"은 `GET /api/sample`에서 입력을 읽어 현재 시간 설정과 함께 `POST /api/plan`으로 보낸다. "기록 데모 보기"는 AI를 호출하지 않는다. 두 경로 모두 최초 요청부터 중지할 수 있다.
+- 오류 처리: 실패한 초안을 완료 결과로 저장하지 않는다. 자동 데모 대체를 하지 않는다. 사용자가 기록 데모 버튼을 눌렀을 때만 아래 경로로 간다. 항상 "내 입력으로 만든 결과가 아닙니다"를 함께 보여 준다.
   - 기록된 실제 실행(`sample-run.json`, SSE 이벤트 37개)이 있으면 재생한다. 배지는 "기록된 실행 재생 · AI 호출 없음"이다. `smoke_plan.py --save`가 기록을 만든다. 기록 파일이 있으면 api가 시작할 때 `plan`·`done` 이벤트가 있고 `error` 이벤트가 없는지 검사한다. 어긋나면 시작하지 않는다.
   - 기록이 없으면 정적 샘플(`meta.source = offline-sample`)을 보여 준다. 배지는 "오프라인 샘플 · AI 호출 없음"이다.
+- 검토: `schedule`과 `validation` 이벤트를 시간표별로 연결한다. `taskId`로 이전 시간표와 비교하고 이동·미배치·새 배치를 표시한다. 변경이 없으면 "시간·배치 변경 없음"을 표시한다. 블록 번호는 재배치마다 바뀌므로 비교 키로 쓰지 않는다. `durationSource`는 입력 추출·AI 추정·기본값·고정 시각 기준이다. 과거 기록에 출처가 없으면 "출처 기록 없음"으로 보인다.
+- 복원: 유효한 `plan` 뒤에 `done`까지 받은 실제 실행만 저장한다. 실패·취소·재생은 저장 결과를 덮어쓰지 않는다. 복원은 입력과 시간 설정도 되돌린다. 저장한 유효 결과만 복원하며 서버의 내보내기 재검증은 유지한다.
+- 측정: 실제 실행에서 브라우저 단조 시계(`performance.now`)로 요청부터 결과까지 측정한다. "이 계획 확정"을 누르면 검토 시간과 확정까지 시간을 한 번 기록한다. 새로고침·복원·재생은 새 실측이 아니다. 입력 준비·파일 가져오기는 제외한다. 서버나 텔레메트리에 측정값을 전송하지 않는다.
 
 ## 4. 에이전트 설계
 에이전트 6개와 코드 단계 5개가 한 워크플로를 이룬다. 정의는 `AgentCatalog.cs`, 지침은 `prompts/<에이전트>.md`에 있다.
@@ -93,14 +97,17 @@ flowchart TD
     critic -->|"revise"| scheduler
     critic -->|"approve"| coach["coach<br/>에이전트, fast"]
     coach --> finalize["finalize<br/>코드"]
-    finalize --> result(["plan 이벤트, done 이벤트"])
+    critic -->|"검사 무효, 모델 호출 전 중단"| invalid(["error · 확정 불가"])
+    finalize -->|"검사 누락 또는 무효"| invalid
+    finalize -->|"유효"| result(["plan 이벤트, done 이벤트"])
     result -.-> confirm{"사용자가 내보내기를 확인"}
     confirm -->|"confirmed true"| export["POST /api/export<br/>MCP export_ics"]
 ```
 ### 5.3 경로 선택 규칙
 - validator: 결과가 유효하거나 고정 일정 위반만 남으면 critic으로 보낸다. 무효이고 scheduler 실행이 2회 미만이면 scheduler로 되돌린다. 무효이고 2회 실행했으면(`MaxSchedulerRuns = 2`) repair로 보낸다.
 - repair: 충돌하는 작업 중 우선순위가 가장 낮은 것을 `deferred`로 옮긴다. 옮길 때마다 다시 검증하며 최대 10번 옮긴다.
-- critic: 네 조건이 모두 맞을 때만 `revise`로 scheduler에 되돌린다. scheduler 실행이 2회 미만, 위반이 고정 일정만이 아님, 경과 시간 70초 이하, 수정 지시가 있음이다. 아니면 coach로 보낸다. 지침은 `revise` 사유를 결함 3가지로 제한한다.
+- critic: 진입 때 검사 결과가 유효하지 않으면 모델을 호출하지 않고 `INVALID_SCHEDULE`로 중단한다. 유효한 결과에서 네 조건이 모두 맞을 때만 `revise`로 scheduler에 되돌린다. scheduler 실행이 2회 미만, 위반이 고정 일정만이 아님, 경과 시간 70초 이하, 수정 지시가 있음이다. 아니면 coach로 보낸다. 지침은 `revise` 사유를 결함 3가지로 제한한다.
+- finalize: 명시적으로 유효하고 위반이 없는 보고서만 최종 결과로 만든다. 보고서가 없으면 `WORKFLOW_FAILED`, 무효이면 `INVALID_SCHEDULE`이다. `PlanService`도 오류가 없고 유효한 출력만 `plan`·`done`으로 보낸다. 실패하면 마지막 초안과 위반을 보여 주되 복사·내보내기·확정을 막는다.
 - 패턴: 순차, 동시 실행(팬아웃은 갈라짐, 팬인은 합류), 반복, 조건 분기, 도구 호출(MCP), 컨텍스트 관리(불변 `PlanContext`, 호출마다 새 세션), 스트리밍(SSE), 사용자 확인(`confirmed: true`), 결정론적 가드레일(validator, repair)이다.
 
 ## 6. MCP 도구 계층
@@ -108,7 +115,7 @@ flowchart TD
 - 도구 4개는 순수 함수이다. 읽기 전용·멱등 어노테이션과 구조화 출력 스키마가 있다. 문자열은 200자 이하, 배열은 50개 이하이다. 잘못된 인수는 예외 대신 한국어 계약 결과로 돌려준다(`MalformedArgumentsFilter`).
   - `resolve_date`는 한국어 날짜·시간 표현을 엄격하게 해석한다(`expression` 60자 이하). `find_free_slots`는 빈 시간대를 찾는다. `export_ics`는 `.ics` 텍스트를 만든다.
   - `validate_schedule`은 OVERLAP, OUT_OF_HOURS, NO_BUFFER, OVERLOAD, DEADLINE_MISSED, INVALID_RANGE 6개 규칙을 검사한다. 기본 버퍼는 5분, 최대 부하는 0.85이다.
-- `export_ics`는 어떤 에이전트의 허용 목록에도 없다. `POST /api/export`만 호출하며, `confirmed: true`와 재검증(`maxLoad = 1.0`)을 거친 뒤에 호출한다. 어노테이션이 아니라 허용 목록과 확인 절차가 이 도구를 지킨다.
+- `export_ics`는 어떤 에이전트의 허용 목록에도 없다. `POST /api/export`만 호출하며, `confirmed: true`와 재검증을 거친 뒤에 호출한다. 계획과 같은 `maxLoad = 0.85`를 쓴다. 어노테이션이 아니라 허용 목록과 확인 절차가 이 도구를 지킨다.
 - `McpGateway`는 연결 하나를 공유하고 끊기면 한 번 다시 연결한다. 주소는 `MCP_URL`, 서비스 디스커버리, `http://localhost:5258` 순으로 찾고 `/mcp`를 붙인다. 도구 로그에는 이름, 결과, 소요 시간만 남고 인수는 남지 않는다.
 
 ## 7. 인프라와 배포
@@ -157,22 +164,26 @@ env Azure__SubscriptionId=<구독 ID> Azure__Location=koreacentral Azure__Resour
 
 ## 10. 테스트와 완료 기준
 ```bash
-dotnet test                                           # 단위·통합 테스트. 2026-11-05 결과: Mcp 421건, Api 855건, 실패 0건
+dotnet test                                           # 고도화 오프라인 결과: Mcp 421건, Api 858건, 실패 0건
 python3 -m unittest discover -s tests/scripts        # 토큰 스크립트 오프라인 테스트 4건. Azure를 호출하지 않는다
-node --test tests/Haru.Api.Tests/app.test.mjs         # 배너와 병렬 도구 결과 표시 5건을 검사한다
+node --test tests/Haru.Api.Tests/app.test.mjs         # 표시·확정·복원·취소·측정의 회귀 검사를 실행한다
 python3 tests/eval/smoke_plan.py --url <주소>          # 실서버 계획 1회 점검. --save는 기록을 저장한다
 python3 tests/eval/injection_eval.py --url <주소>      # 프롬프트 주입 11건. 사람이 실행한다
 ```
 - `Haru.Mcp.Tests`: 날짜 해석, 빈 시간대, 시간표 검증, ICS 생성, 실제 MCP 서버에 클라이언트로 붙는 통합 테스트(`McpServerLiveTests`)이다.
 - `Haru.Api.Tests`: 실제 `Haru.Api` 앱을 메모리에서 띄운다. 에이전트 실행기, MCP 게이트웨이, Copilot 호스트는 오프라인 가짜로 바꾼다. 경로 선택, repair, 정제, 사용 한도, 엔드포인트, 워크플로를 검사한다. 모델 품질은 위의 두 스크립트가 실서버로 확인한다.
 - 실측(실제 Copilot, 실제 MCP, 샘플 입력): 계획 1회가 28.7~37초이다. intake 4~5초, estimator·prioritizer 병렬 약 4초, scheduler 약 13초(도구 호출 2회), critic 4~6초, coach 약 3초이다. 결과는 유효, 부하 78~84%, 위반 0건, scheduler 1회이다. 주입 평가는 11개 중 11개 통과이다.
-- 완료 기준: 샘플 입력의 결과가 유효하고 위반 0건이다. 계획 1회가 120초 안에 끝난다. `confirmed` 없는 `POST /api/export`는 400 `NOT_CONFIRMED`이다. 토큰이 없어도 재생 또는 샘플로 핵심 화면이 동작한다. `dotnet test`가 통과한다(Mcp 421건, Api 855건, 2026-11-05 확인).
+- 완료 기준: 샘플 입력의 결과가 유효하고 위반 0건이다. 계획 1회가 120초 안에 끝난다. `confirmed` 없는 `POST /api/export`는 400 `NOT_CONFIRMED`이다. 토큰이 없어도 사용자가 재생 또는 샘플을 선택할 수 있다. `dotnet test`가 통과한다(Mcp 421건, Api 858건, 2026-11-05 고도화 소스 확인). Node UI 회귀 16건도 통과한다.
+- 브라우저 확인: 로컬에서 기록 재생과 실제 AI 비활성 오류를 확인했다. 합성 SSE 응답으로 무효 결과 차단·검증 이력·확정·이전 입력 복원·저장 삭제를 확인했다. 이 검사는 실제 AI 동작 증거가 아니다.
+- 고도화 실제 AI 확인(2026-11-05, 사용자 승인, 로컬): 스모크 32.7초, 유효, 부하 81%였다. 주입 평가 11개가 모두 통과했다. 새 입력 브라우저 실행은 47.1초, 유효, 부하 69%였다. critic의 수정 요청으로 scheduler를 2회 실행했다. 두 시간표의 시각은 같았고, 오늘 마감인 제안서는 미배치 경고로 남았다. 재호출의 품질 개선을 입증한 사례는 아니다.
+- 내보내기: 위 브라우저 결과를 확인 후 내보냈다. HTTP 200과 `text/calendar`, 일정 6개, `Asia/Seoul`을 확인했다. 16:18:02에 내려받은 실제 파일도 완전한 `VCALENDAR`와 일정 6개였다. 파일을 외부 캘린더에 가져오지는 않았다. 검증용 API·MCP를 종료했고 남은 AI 세션 디렉터리는 없었다(운영 잠금 디렉터리 제외).
 
 ## 11. 위험과 한계
+- 이번 고도화의 실제 AI 스모크·주입 평가는 로컬에서 완료했다. Azure 재배포는 별도 승인 후 실행할 예정이다. 위 Azure 배포 실측은 1차 제출 버전의 기록이다.
 - 실제 AI에는 Copilot 권한이 있는 토큰이 필요하다. 토큰이 없으면 기록 재생 또는 샘플이 나온다.
 - 모델이 조용히 다른 모델로 바뀔 수 있다. `meta.models`로 확인한다.
 - 세션 삭제가 실패하면(제한 10초 초과 등) 그 세션 기록은 다음 시작 때까지 남는다. 실패는 예외 종류만 로그에 남긴다.
-- 실제 AI는 세분화된 토큰의 만료일까지만 동작한다. 만료되면 화면이 기록된 실행 재생으로 돌아간다.
+- 실제 AI는 세분화된 토큰의 만료일까지만 동작한다. 만료되면 오류를 보이고 사용자가 기록 데모를 선택할 수 있다.
 - 사용 한도는 복제본마다 메모리에서 센다. api에 고정 세션을 켰지만 복제본끼리 한도를 공유하지 않는다(TDD 13).
 - Copilot CLI 런타임을 빌드 때 `github.com`에서 내려받는다. 이미지는 `linux-x64`만 지원한다.
 - Container Apps ingress는 요청을 약 240초에 끊는다. 계획 1회는 약 30초이다.

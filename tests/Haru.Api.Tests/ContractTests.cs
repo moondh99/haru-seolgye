@@ -45,7 +45,13 @@ internal static class PlanShape
 
     private static void AssertTask(JsonElement task)
     {
-        Assert.Equal(new[] { "deadline", "fixedEnd", "fixedStart", "id", "kind", "minutes", "note", "priority", "title" }, Names(task));
+        var names = Names(task);
+        if (task.TryGetProperty("durationSource", out var durationSource))
+        {
+            Assert.Contains(durationSource.GetString(), new string?[] { null, "input", "fixed", "estimated", "default" });
+            names = names.Where(n => n != "durationSource").ToArray();
+        }
+        Assert.Equal(new[] { "deadline", "fixedEnd", "fixedStart", "id", "kind", "minutes", "note", "priority", "title" }, names);
         Assert.Matches(@"^t\d+$", task.GetProperty("id").GetString()!);
         Assert.InRange(task.GetProperty("title").GetString()!.Length, 1, 80);
         var minutes = task.GetProperty("minutes").GetInt32();

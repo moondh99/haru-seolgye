@@ -20,6 +20,8 @@ interface TaskItem {
   fixedEnd: Hhmm | null;
   kind: "task" | "fixed";
   note: string | null;        // 최대 120자
+  durationSource?: "input" | "estimated" | "default" | "fixed" | null;
+                              // 입력 추출, AI 추정, 기본값, 고정 시작·종료 시각 기준
 }
 
 interface Block {
@@ -77,7 +79,7 @@ interface PlanResult {
 | `GET /api/config` | `{ aiAvailable, today, limits: { maxInputChars: 3000, plansPerWindow, windowMinutes }, defaults: { workStart: "09:00", workEnd: "18:00", lunchStart: "12:00", lunchEnd: "13:00" }, version }` |
 | `POST /api/plan` | 요청 본문은 아래와 같다. 응답은 SSE(`text/event-stream`)다. |
 | `GET /api/sample` | `{ inputText, plan: PlanResult, events }`. `plan`은 오프라인 샘플이고 `meta.source`는 `offline-sample`이다. `events`는 실제 실행을 기록한 SSE 이벤트 목록 `{ t: number, event: string, data: object }[]`이다(`t`는 ms, `agent_delta`는 없다). 기록 파일이 없으면 `events`는 `null`이다. UI는 `events`가 있으면 재생하고, 없으면 `plan`만 보인다. |
-| `POST /api/export` | 요청 `{ confirmed: true, day, workStart?, workEnd?, blocks: Block[] }`. `blocks`는 1~50개다. `workStart`·`workEnd`를 생략하면 00:00~23:59로 검증한다. 응답은 `text/calendar` 첨부 파일 `haru-<day>.ics`다. `confirmed`가 `true`가 아니면 400이다. `validate_schedule`(`maxLoad` 1.0)로 다시 검증하고 실패하면 422다. 내보내기 도구에 연결하지 못하면 503 `AI_UNAVAILABLE`이다. |
+| `POST /api/export` | 요청 `{ confirmed: true, day, workStart?, workEnd?, blocks: Block[] }`. `blocks`는 1~50개다. `workStart`·`workEnd`를 생략하면 00:00~23:59로 검증한다. 응답은 `text/calendar` 첨부 파일 `haru-<day>.ics`다. `confirmed`가 `true`가 아니면 400이다. 계획과 같은 `validate_schedule` 부하 상한(기본 `maxLoad` 0.85)으로 다시 검증하고 실패하면 422다. 내보내기 도구에 연결하지 못하면 503 `AI_UNAVAILABLE`이다. |
 | `GET /health`, `GET /alive` | 상태 점검. Container Apps 프로브가 쓴다. |
 
 `POST /api/plan` 요청 본문:
@@ -121,11 +123,17 @@ API는 `fixed` 블록끼리 이웃해서 생기는 `NO_BUFFER`를 위반으로 �
 | `critique` | `{ iteration, decision: "approve" \| "revise", risks: Risk[] }` |
 | `plan` | `PlanResult` |
 | `done` | `{ elapsedMs, source: "ai" \| "offline-sample", repaired }` |
-| `error` | `{ code, message, recoverable }`. `code`는 `NO_TASKS`(입력에서 할 일을 찾지 못함), `TIMEOUT`(시간 초과), `WORKFLOW_FAILED`(AI 응답 해석 실패, 검증 도구 연결 실패, 그 밖의 실패)다. `message`는 고정된 한국어 문장이다. |
+| `error` | `{ code, message, recoverable }`. `code`는 `NO_TASKS`(입력에서 할 일을 찾지 못함), `TIMEOUT`(시간 초과), `INVALID_SCHEDULE`(보정 후 위반 잔존·고정 일정 충돌), `WORKFLOW_FAILED`(AI 응답 해석 실패, 검증 결과 누락, 도구 연결 실패, 그 밖의 실패)다. `message`는 고정된 한국어 문장이다. |
 
 `error` 뒤에는 `done`이 오지 않는다. 스트림은 `plan`과 `done`으로 끝나거나 `error`로 끝난다.
 `callId`는 실행 안에서 유일한 문자열이다. 도구 호출과 결과는 같은 `callId`를 쓴다. UI는 완료 순서가 아니라 이 값으로 결과를 연결한다. 기록된 샘플에도 같은 규칙을 적용한다.
-UI는 오류를 받으면(스트림 시작 전 오류 포함) 안내 배너를 보이고 `GET /api/sample`의 결과를 대신 보인다. 기록된 실행이 있으면 "기록된 실행 재생 · AI 호출 없음", 없으면 "오프라인 샘플 · AI 호출 없음"으로 표시한다. 입력 문제(`INPUT_EMPTY`, `INPUT_TOO_LONG`, `BAD_REQUEST`, `NO_TASKS`)는 샘플로 바꾸지 않고 오류만 보인다.
+`plan`은 `validation.valid = true`이고 위반 배열이 빈 결과만 포함한다. 위반이 남으면 마지막 `schedule`·`validation`은 초안으로 표시하고 `error`로 끝낸다. 초안의 확정·복사·내보내기는 막는다. 오류를 샘플로 자동 대체하지 않는다.
+
+UI는 "예시로 실제 AI 실행"에서 샘플 입력을 일반 계획 API로 보낸다. "기록 데모 보기"는 사용자가 선택했을 때만 실행한다. 기록된 실행이 있으면 "기록된 실행 재생 · AI 호출 없음", 없으면 "오프라인 샘플 · AI 호출 없음"으로 표시한다.
+
+`durationSource`는 이번 버전의 선택 필드다. 과거 샘플에 없으면 출처를 알 수 없다고 표시한다. `input`은 intake에서 추출한 값이며 원문 일치 검증을 뜻하지 않는다. `fixed`는 해석한 시작·종료 시각으로 계산한 값이다. 종료 시각이 없어 기본 60분을 쓰면 `default`다.
+
+브라우저는 유효한 `plan`과 `done`을 모두 받은 실제 실행만 저장한다. 저장한 계획에는 입력·시간 설정·검증 이력을 함께 둔다. 이전 유효 계획 1개를 복원할 수 있다. 실패·취소·기록 재생은 저장된 계획을 덮어쓰지 않는다. 확정 시간 측정은 UI 안에서만 수행하며 API나 텔레메트리에 전송하지 않는다.
 
 ## 3. MCP 서버 (`Haru.Mcp`, 내부 전용)
 

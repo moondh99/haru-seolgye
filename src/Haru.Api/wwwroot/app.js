@@ -70,14 +70,17 @@ const ERR_TITLE = {
   INTERNAL: '서버에서 문제가 생겼습니다',
   NETWORK: '서버에 연결하지 못했습니다',
   STREAM_CLOSED: '연결이 중간에 끊겼습니다',
+  INVALID_SCHEDULE: '일정을 조정해야 합니다',
 };
-const NO_SAMPLE = new Set(['INPUT_EMPTY', 'INPUT_TOO_LONG', 'BAD_REQUEST', 'NO_TASKS']);
 const STORE = 'haru.v1';
 const BUSY_WAIT_MS = 5000;
 const BUSY_TRIES = 13;
 const FALLBACK_INPUT = '오늘 할 일\n- 14시 팀 주간 회의 (1시간)\n- 제안서 초안 작성, 오늘 17시까지\n- 밀린 메일 답장 정리\n- 운동 30분';
 
-const S = { config: null, running: false, mode: 'idle', ctrl: null, plan: null, cur: null, tasks: null, view: null, ag: {}, sig: '', persist: null, tick: 0, t0: 0, error: null };
+const S = { config: null, running: false, mode: 'idle', ctrl: null, plan: null, cur: null, tasks: null, view: null, ag: {}, sig: '', tick: 0, t0: 0, error: null,
+  saved: null, previous: null, input: null, history: [], revisionReason: '', measurement: null, exporting: false };
+const validPlan = (p) => p?.validation?.valid === true && Array.isArray(p.validation.violations)
+  && p.validation.violations.length === 0 && Array.isArray(p.blocks);
 
 /* ---------- 공통 UI ---------- */
 
@@ -105,7 +108,7 @@ function paintStatus() {
   const s = $('#status'), t = $('#status-text');
   if (!S.config) { s.dataset.state = 'bad'; t.textContent = '서버에 연결하지 못했습니다'; }
   else if (S.config.aiAvailable) { s.dataset.state = 'ok'; t.textContent = 'AI 연결됨'; }
-  else { s.dataset.state = 'warn'; t.textContent = 'AI 미연결 · 샘플로 체험할 수 있습니다'; }
+  else { s.dataset.state = 'warn'; t.textContent = 'AI 미연결 · 기록 데모를 볼 수 있습니다'; }
 }
 
 function updateCount() {
@@ -148,6 +151,7 @@ function resetSteps() {
 const stepEl = (id) => $(`.step[data-agent="${id}"]`);
 
 function onStarted(d) {
+  if (d.agent === 'repair') S.revisionReason = '반복 배치 후 남은 규칙 위반을 코드로 보정했습니다.';
   const li = stepEl(d.agent);
   if (!li) return;
   const a = (S.ag[d.agent] ??= { runs: 0, chars: 0, t0: 0 });
@@ -201,14 +205,16 @@ function renderTasks(tasks) {
     t.kind === 'fixed'
       ? el('span', { class: 'pri fx', text: `고정 ${t.fixedStart}–${t.fixedEnd}` })
       : el('span', { class: `pri p${t.priority}`, text: `우선순위 ${PRI[t.priority] ?? t.priority}` }),
-    el('span', { class: 'm', text: fmtDur(t.minutes) }),
+    el('span', { class: 'm', text: `${fmtDur(t.minutes)} · ${{
+      input: '입력에서 추출 · 확인 필요', estimated: 'AI 추정', default: '기본값', fixed: '고정 시각 기준',
+    }[t.durationSource] ?? '출처 기록 없음'}` }),
     t.deadline ? el('span', { class: 'm', text: `마감 ${fmtDeadline(t.deadline)}` }) : null)));
 }
 
 /* ---------- 결과 ---------- */
 
 function paintPlan(p, draft = 0) {
-  S.plan = draft ? null : p;
+  S.plan = !draft && validPlan(p) ? p : null;
   $('#result').hidden = false;
   $('#res-day').textContent = fmtDay(p.day);
 
@@ -225,13 +231,15 @@ function paintPlan(p, draft = 0) {
   paintVitals(p);
   paintBlocks(p);
   paintSide(p);
-  $('#btn-export').disabled = !!draft || !p.blocks?.length;
-  $('#btn-copy').disabled = !!draft;
+  paintActions();
 }
 
 function paintVitals(p) {
   const v = p.validation, box = $('#vitals');
   box.hidden = !v;
+  const violations = v?.violations ?? [];
+  $('#violations-box').hidden = !violations.length;
+  $('#violations').replaceChildren(...violations.map(x => el('li', { text: x.message })));
   if (!v) return;
   const ok = $('#v-valid');
   ok.textContent = v.valid ? '통과 · 위반 0건' : `위반 ${v.violations.length}건`;
@@ -247,6 +255,62 @@ function paintVitals(p) {
   if (!m) { run.textContent = '검증 중'; return; }
   run.append(`${secs(m.elapsedMs)} · 시간 배치 ${m.iterations}회${m.repaired ? ' · 자동 보정' : ''}`);
   if (m.models) run.append(el('small', { class: 'sub', text: `${m.models.fast} · ${m.models.smart}` }));
+}
+
+function paintActions() {
+  for (const id of ['#btn-plan', '#btn-sample', '#btn-example', '#btn-fill', '#btn-clear']) $(id).disabled = S.running || S.exporting;
+  const ready = !S.running && !S.exporting && validPlan(S.plan);
+  $('#btn-export').disabled = !ready || !S.plan?.blocks?.some(b => b.kind !== 'break');
+  $('#btn-copy').disabled = !ready;
+  $('#btn-confirm').disabled = !ready || S.measurement?.ready == null || S.measurement.totalMs != null;
+  $('#btn-restore').hidden = !restoreTarget();
+  $('#btn-restore').disabled = S.running || S.exporting;
+}
+
+function scheduleChanges(before, after) {
+  const prior = new Map((before.blocks ?? []).filter(b => b.taskId).map(b => [b.taskId, b]));
+  const next = new Map((after.blocks ?? []).filter(b => b.taskId).map(b => [b.taskId, b]));
+  const changes = [];
+  for (const [id, b] of prior) {
+    const n = next.get(id);
+    if (!n) changes.push(`${b.title}: ${b.start}–${b.end} → 오늘 배치하지 않음`);
+    else if (b.start !== n.start || b.end !== n.end) changes.push(`${b.title}: ${b.start}–${b.end} → ${n.start}–${n.end}`);
+  }
+  for (const [id, b] of next) if (!prior.has(id)) changes.push(`${b.title}: 미배치 → ${b.start}–${b.end}`);
+  return changes;
+}
+
+function paintReview() {
+  $('#review-box').hidden = !S.history.length;
+  $('#review').replaceChildren(...S.history.map((round, i) => el('li', {},
+    el('strong', { text: `${i + 1}번째 시간표 · ${round.report ? round.report.valid ? '규칙 통과' : `위반 ${round.report.violations.length}건` : '검사 미완료'}` }),
+    el('p', { text: round.reason }),
+    round.report ? el('p', { text: `부하 ${Math.round(round.report.loadRatio * 100)}%${round.report.violations.length ? ` · ${round.report.violations.map(v => v.message).join(' / ')}` : ''}` }) : null,
+    ...(i ? (() => {
+      const changes = scheduleChanges(S.history[i - 1], round);
+      return changes.length ? changes : ['시간·배치 변경 없음. 남은 위험과 미룬 일을 확인해 주세요.'];
+    })() : []).map(text => el('p', { text })),
+    ...round.deferred.map(d => el('p', { text: `미룸: ${d.title} — ${d.reason}` })))));
+}
+
+function paintMeasurement() {
+  const m = S.measurement;
+  if (S.mode === 'live' && S.running && m?.requestMs == null) {
+    $('#measurement').textContent = '실제 AI 실행 중입니다. 결과를 받은 뒤 검토·확정 시간을 측정합니다.';
+    return;
+  }
+  $('#measurement').textContent = m?.requestMs != null
+    ? `요청부터 결과까지 ${secs(m.requestMs)}${m.totalMs != null ? ` · 검토 ${secs(m.reviewMs)} · 확정까지 ${secs(m.totalMs)}` : ' · 검토 후 ‘이 계획 확정’을 누르면 검토 시간을 기록합니다.'} (입력 준비·파일 가져오기 제외, 절감 시간 아님)`
+    : '기록·저장 결과는 이번 실제 실행 시간으로 측정하지 않습니다. 절감 효과는 사용자 비교 실험이 필요합니다.';
+}
+
+function confirmPlan() {
+  if (S.running || !validPlan(S.plan) || S.measurement?.ready == null || S.measurement.totalMs != null) return;
+  const now = performance.now();
+  S.measurement.reviewMs = now - S.measurement.ready;
+  S.measurement.totalMs = now - S.measurement.start;
+  paintMeasurement(); paintActions();
+  toast('이 계획을 확정했습니다. 캘린더 내보내기는 별도로 확인합니다.');
 }
 
 function paintBlocks(p) {
@@ -326,28 +390,52 @@ function handleEvent(name, d) {
     case 'agent_completed': onCompleted(d); break;
     case 'tasks': S.tasks = d.tasks; renderTasks(d.tasks); break;
     case 'schedule':
+      S.history.push({ blocks: d.blocks ?? [], deferred: d.deferred ?? [], report: null,
+        reason: S.revisionReason || (S.history.length ? '규칙 검사 결과에 따라 다시 배치했습니다.' : '첫 배치입니다.') });
+      S.revisionReason = '';
       S.cur = { ...S.view, tasks: S.tasks ?? [], blocks: d.blocks ?? [], deferred: d.deferred ?? [], risks: [], summary: '', validation: null, meta: null };
       paintPlan(S.cur, d.iteration ?? 1);
+      paintReview();
       break;
     case 'validation': {
       if (!S.cur) break;
       S.cur.validation = d.report; paintVitals(S.cur);
+      if (S.history.length) S.history.at(-1).report = d.report;
+      if (!d.report?.valid) S.revisionReason = '도구가 발견한 규칙 위반을 줄이도록 다시 배치했습니다.';
+      paintReview();
       const li = stepEl('validator'), v = d.report?.violations ?? [];
       if (li) $('.sub', li).textContent = v.length ? `위반 ${v.length}건 · ${v.slice(0, 2).map((x) => x.message).join(' / ')}` : '';
       break;
     }
     case 'critique': {
+      if (d.decision === 'revise') S.revisionReason = `위험 검토에서 수정을 요청했습니다.${d.risks?.length ? ` ${d.risks.map(r => r.title).join(' / ')}` : ''}`;
       const li = stepEl('critic');
       if (li) $('.sub', li).textContent = d.decision === 'revise' ? '판정: 수정 요청 → 시간 배치를 다시 실행합니다.' : '판정: 승인';
       if (S.cur) { S.cur.risks = d.risks ?? []; paintSide(S.cur); }
       break;
     }
     case 'plan':
+      if (!validPlan(d)) {
+        S.error = { code: 'INVALID_SCHEDULE', message: '유효하지 않은 결과라 확정하지 않았습니다.' };
+        break;
+      }
       S.cur = d; paintPlan(d);
-      if (S.mode === 'live') { S.persist = d; save(); }
-      live('시간표가 완성되었습니다');
       break;
-    case 'done': finish(S.mode === 'replay' ? '기록된 실행 · AI 호출 없음' : `완료 · ${secs(d.elapsedMs)}`); focusResult(); break;
+    case 'done':
+      if (S.error || !validPlan(S.plan)) {
+        S.error ??= { code: 'STREAM_CLOSED', message: '검증된 최종 결과를 받지 못했습니다.' };
+        break;
+      }
+      if (S.mode === 'live') {
+        S.measurement.ready = performance.now();
+        S.measurement.requestMs = S.measurement.ready - S.measurement.start;
+        S.previous = S.saved;
+        S.saved = { plan: S.plan, input: S.input, history: S.history };
+        save();
+      }
+      finish(S.mode === 'replay' ? '기록된 실행 · AI 호출 없음' : `완료 · ${secs(d.elapsedMs)}`);
+      paintMeasurement(); paintActions(); focusResult(); live('검증된 시간표가 완성되었습니다');
+      break;
     case 'error':
       S.error = d;
       $$('.step[data-state="running"]').forEach((li) => { li.dataset.state = 'failed'; });
@@ -386,10 +474,14 @@ async function* parseSse(res) {
 
 function begin(mode, keepSteps = false) {
   S.mode = mode; S.running = true; S.error = null; S.plan = null; S.cur = null; S.sig = '';
+  S.history = []; S.revisionReason = '';
+  S.measurement = mode === 'live' ? { start: performance.now(), ready: null, requestMs: null, totalMs: null } : null;
+  paintReview(); paintMeasurement();
   hideBanner();
   if (!keepSteps) { resetSteps(); S.tasks = null; }
   $('#result').hidden = true;
-  for (const id of ['#btn-plan', '#btn-sample']) $(id).disabled = true;
+  for (const id of ['#btn-plan', '#btn-sample', '#btn-example', '#btn-fill', '#btn-clear']) $(id).disabled = true;
+  paintActions();
   $('#btn-stop').hidden = false;
   $('#steps').setAttribute('aria-busy', 'true');
   $('#agents-state').textContent = mode === 'live' ? '실행 중' : '재생 중';
@@ -410,10 +502,11 @@ function finish(label) {
   S.running = false; S.ctrl = null;
   clearInterval(S.tick);
   $('#btn-plan').textContent = '하루 계획 만들기';
-  for (const id of ['#btn-plan', '#btn-sample']) $(id).disabled = false;
+  for (const id of ['#btn-plan', '#btn-sample', '#btn-example', '#btn-fill', '#btn-clear']) $(id).disabled = false;
   $('#btn-stop').hidden = true;
   $('#steps').setAttribute('aria-busy', 'false');
   $('#agents-state').textContent = label ?? '완료';
+  paintActions();
 }
 
 function readSettings() {
@@ -432,15 +525,39 @@ async function readError(res) {
 }
 
 async function runPlan() {
-  if (S.running) return;
+  if (S.running || S.exporting) return;
   const text = $('#text').value.trim();
   if (!text) { banner('warn', '할 일을 입력해 주세요', '메모나 메신저 글을 붙여 넣거나 ‘예시 입력 넣기’를 눌러 보세요.'); $('#text').focus(); return; }
   const settings = readSettings();
   if (!settings) return;
 
   begin('live');
-  S.view = { day: S.config?.today ?? '', workStart: settings.workStart, workEnd: settings.workEnd };
+  await requestPlan(text, settings, S.ctrl = new AbortController());
+}
+
+async function runExample() {
+  if (S.running || S.exporting) return;
+  const settings = readSettings();
+  if (!settings) return;
+  begin('live');
   const ctrl = (S.ctrl = new AbortController());
+  try {
+    const res = await fetch('/api/sample', { signal: ctrl.signal });
+    if (!res.ok) throw new Error('sample');
+    const sample = await res.json();
+    ctrl.signal.throwIfAborted();
+    if (!sample.inputText?.trim()) throw new Error('empty sample');
+    $('#text').value = sample.inputText; updateCount();
+    await requestPlan(sample.inputText, settings, ctrl);
+  } catch (e) {
+    if (e?.name === 'AbortError') { finish('중지됨'); banner('info', '실제 AI 예시 실행을 중지했습니다.'); }
+    else await fail('NETWORK', '예시 입력을 불러오지 못했습니다. 다시 시도해 주세요.');
+  }
+}
+
+async function requestPlan(text, settings, ctrl) {
+  S.input = { text, ...settings };
+  S.view = { day: S.config?.today ?? '', workStart: settings.workStart, workEnd: settings.workEnd };
   let finished = false;
   try {
     let res;
@@ -462,12 +579,12 @@ async function runPlan() {
     $('#agents-state').textContent = '실행 중';
     for await (const { event, data } of parseSse(res)) {
       handleEvent(event, data);
-      if (event === 'done' || event === 'error') finished = true;
+      if (event === 'done' || event === 'error') { finished = true; break; }
     }
     if (S.error) await fail(S.error.code, S.error.message);
     else if (!finished) await fail('STREAM_CLOSED', '잠시 후 다시 시도해 주세요.');
   } catch (e) {
-    if (e?.name === 'AbortError') { finish('중지됨'); banner('info', '계획 만들기를 중지했습니다.'); }
+    if (e?.name === 'AbortError') { S.plan = null; finish('중지됨'); banner('info', '계획 만들기를 중지했습니다.'); }
     else await fail('NETWORK', '네트워크를 확인한 뒤 다시 시도해 주세요.');
   } finally {
     finish('완료');
@@ -476,20 +593,27 @@ async function runPlan() {
 
 async function fail(code, message) {
   const title = ERR_TITLE[code] ?? '문제가 생겼습니다';
-  const shown = NO_SAMPLE.has(code) ? '' : await showSample({ fallback: true });
+  S.plan = null; S.measurement = null;
   finish('오류');
-  const note = { replay: ' 아래에 기록된 샘플 실행을 대신 보여 드립니다. 내 입력으로 만든 결과가 아닙니다.', sample: ' 아래에 오프라인 샘플을 대신 보여 드립니다. 내 입력으로 만든 결과가 아닙니다.' }[shown] ?? '';
-  banner('error', title, `${message || ''}${note}`.trim(), [{ label: '다시 시도', run: runPlan }]);
+  if (S.cur) { $('#badge-draft').hidden = false; $('#badge-draft').textContent = '미완료 · 확정·내보내기 불가'; }
+  paintActions(); paintMeasurement();
+  banner('error', title, message, [
+    { label: code === 'INVALID_SCHEDULE' ? '입력 수정' : '다시 시도', run: code === 'INVALID_SCHEDULE' ? () => $('#text').focus() : runPlan },
+    { label: '기록 데모 보기 · 내 결과 아님', run: showSample },
+  ]);
 }
 
 const sleep = (ms, signal) => new Promise((resolve, reject) => {
-  const id = setTimeout(resolve, ms);
-  signal?.addEventListener('abort', () => { clearTimeout(id); reject(new DOMException('Aborted', 'AbortError')); }, { once: true });
+  if (signal?.aborted) { reject(new DOMException('Aborted', 'AbortError')); return; }
+  const abort = () => { clearTimeout(id); reject(new DOMException('Aborted', 'AbortError')); };
+  const id = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, ms);
+  signal?.addEventListener('abort', abort, { once: true });
 });
 
 async function replay(events, signal) {
   let prev = 0;
   for (const ev of events) {
+    signal.throwIfAborted();
     const gap = Math.min(Math.max((ev.t ?? 0) - prev, 0) / 4, 450);
     prev = ev.t ?? prev;
     if (gap > 25) await sleep(gap, signal);
@@ -497,51 +621,69 @@ async function replay(events, signal) {
   }
 }
 
-async function showSample({ fallback = false } = {}) {
-  if (S.running && !fallback) return '';
-  if (!fallback) S.running = true;
-  let sample;
+async function showSample() {
+  if (S.running || S.exporting) return;
+  begin('replay');
+  $('#agents-state').textContent = '기록 불러오는 중';
+  const ctrl = (S.ctrl = new AbortController());
   try {
-    const r = await fetch('/api/sample');
+    const r = await fetch('/api/sample', { signal: ctrl.signal });
     if (!r.ok) throw new Error('sample');
-    sample = await r.json();
-  } catch {
-    finish('오류');
-    banner('error', '샘플을 불러오지 못했습니다', '서버 상태를 확인한 뒤 페이지를 새로 고침해 주세요.');
-    return '';
+    const sample = await r.json();
+    ctrl.signal.throwIfAborted();
+    const p = sample.plan;
+    S.view = { day: p.day, workStart: p.workStart, workEnd: p.workEnd };
+    S.tasks = p.tasks;
+    if (sample.events?.length) {
+      $('#agents-state').textContent = '재생 중';
+      await replay(sample.events, ctrl.signal);
+      if (S.error || !validPlan(S.plan)) throw new Error('invalid recording');
+    } else {
+      if (!validPlan(p)) throw new Error('invalid sample');
+      S.mode = 'sample'; renderTasks(p.tasks); paintPlan(p);
+      finish('샘플 · AI 호출 없음'); focusResult();
+    }
+  } catch (e) {
+    S.plan = null;
+    if (e?.name === 'AbortError') { finish('중지됨'); banner('info', '기록 불러오기·재생을 중지했습니다.'); }
+    else { finish('오류'); banner('error', '기록을 불러오지 못했습니다', '서버 상태를 확인한 뒤 다시 시도해 주세요.'); }
+  } finally {
+    finish('기록 재생 종료');
+    paintActions();
   }
-
-  const p = sample.plan;
-  const events = Array.isArray(sample.events) ? sample.events : [];
-  const replayable = events.length > 0;
-  if (!fallback) {
-    $('#text').value = sample.inputText ?? ''; updateCount();
-    begin(replayable ? 'replay' : 'sample');
-  } else if (replayable) {
-    begin('replay');
-  } else {
-    S.mode = 'sample';
-  }
-  S.view = { day: p.day, workStart: p.workStart, workEnd: p.workEnd };
-  S.tasks = p.tasks;
-
-  if (replayable) {
-    const ctrl = (S.ctrl = new AbortController());
-    try { await replay(events, ctrl.signal); }
-    catch (e) { if (e?.name !== 'AbortError') throw e; finish('중지됨'); banner('info', '재생을 중지했습니다.'); return 'replay'; }
-    return 'replay';
-  }
-  renderTasks(p.tasks);
-  paintPlan(p);
-  if (fallback) $('#agents-state').textContent = '오류 · 샘플 표시';
-  else { finish('샘플 · AI 호출 없음'); focusResult(); }
-  return 'sample';
 }
 
 /* ---------- 저장(브라우저 안에서만) ---------- */
 
 function save() {
-  try { localStorage.setItem(STORE, JSON.stringify({ text: $('#text').value, plan: S.persist })); } catch { /* 저장 불가 환경 */ }
+  try { localStorage.setItem(STORE, JSON.stringify({ text: $('#text').value, saved: S.saved, previous: S.previous })); }
+  catch { toast('브라우저에 저장하지 못했습니다. 페이지를 닫기 전에 필요한 결과를 복사해 주세요.'); }
+}
+
+function restoreTarget() {
+  if (S.saved && S.plan !== S.saved.plan) return S.saved;
+  return S.previous;
+}
+
+function displaySaved(saved) {
+  S.mode = 'restored'; S.measurement = null; S.history = saved.history ?? [];
+  S.view = { day: saved.plan.day, workStart: saved.plan.workStart, workEnd: saved.plan.workEnd };
+  if (saved.input) {
+    $('#text').value = saved.input.text ?? '';
+    for (const k of ['workStart', 'workEnd', 'lunchStart', 'lunchEnd']) if (saved.input[k] != null) $(`#${k}`).value = saved.input[k];
+    updateCount();
+  }
+  renderTasks(saved.plan.tasks); paintPlan(saved.plan); paintReview(); paintMeasurement();
+}
+
+function restorePrevious() {
+  if (S.running || S.exporting) return;
+  const target = restoreTarget();
+  if (!target || !validPlan(target.plan)) return;
+  if (target !== S.saved) { S.previous = S.saved; S.saved = target; }
+  resetSteps(); displaySaved(target); hideBanner(); save(); paintActions(); focusResult();
+  $('#agents-state').textContent = '이전 결과 복원 · AI 호출 없음';
+  toast('계획과 당시 입력·시간 설정을 복원했습니다.');
 }
 
 function restore() {
@@ -549,21 +691,26 @@ function restore() {
     const raw = JSON.parse(localStorage.getItem(STORE) ?? 'null');
     if (!raw) return;
     if (raw.text && !$('#text').value) { $('#text').value = raw.text; updateCount(); }
-    const p = raw.plan;
-    if (p?.meta && p.day === S.config?.today && Array.isArray(p.blocks)) {
-      S.persist = p; S.mode = 'restored'; S.view = { day: p.day, workStart: p.workStart, workEnd: p.workEnd };
-      renderTasks(p.tasks); paintPlan(p);
+    const saved = raw.saved ?? (raw.plan ? { plan: raw.plan } : null);
+    if (validPlan(saved?.plan) && saved.plan.day === S.config?.today) {
+      S.saved = saved;
+      if (validPlan(raw.previous?.plan) && raw.previous.plan.day === S.config.today) S.previous = raw.previous;
+      const text = $('#text').value;
+      displaySaved(saved);
+      $('#text').value = text; updateCount();
     }
-  } catch { localStorage.removeItem(STORE); }
+  } catch { toast('저장된 결과를 불러오지 못했습니다. 입력과 시간 설정을 확인해 주세요.'); }
 }
 
 function clearAll() {
-  if (S.running) return;
+  if (S.running || S.exporting) return;
   $('#text').value = ''; updateCount();
-  S.persist = null; S.plan = null; S.cur = null; S.sig = '';
-  try { localStorage.removeItem(STORE); } catch { /* 무시 */ }
+  S.saved = null; S.previous = null; S.plan = null; S.cur = null; S.sig = '';
+  S.history = []; S.measurement = null; S.input = null;
+  try { localStorage.removeItem(STORE); } catch { toast('브라우저 저장을 지우지 못했습니다. 브라우저의 사이트 데이터 삭제를 이용해 주세요.'); }
   $('#result').hidden = true; hideBanner(); resetSteps();
   $('#agents-state').textContent = '대기 중';
+  paintActions(); paintReview(); paintMeasurement();
   $('#text').focus();
 }
 
@@ -577,14 +724,14 @@ function planText(p) {
 }
 
 async function copyPlan() {
-  if (!S.plan) return;
+  if (S.running || !validPlan(S.plan)) return;
   try { await navigator.clipboard.writeText(planText(S.plan)); toast('시간표를 복사했습니다.'); }
   catch { toast('복사하지 못했습니다. 브라우저 권한을 확인해 주세요.'); }
 }
 
 function openExport() {
   const p = S.plan;
-  if (!p || S.running) return;
+  if (!validPlan(p) || S.running || S.exporting) return;
   const n = p.blocks.filter((b) => b.kind !== 'break').length;
   $('#dlg-body').textContent = `${fmtDay(p.day)} 일정 ${n}개를 .ics 파일로 내려받습니다.`;
   $('#dlg-error').hidden = true;
@@ -595,7 +742,8 @@ function openExport() {
 
 async function doExport() {
   const p = S.plan;
-  if (!p) return;
+  if (!validPlan(p) || S.running || S.exporting) return;
+  S.exporting = true; paintActions();
   const ok = $('#dlg-ok'), err = $('#dlg-error');
   ok.disabled = true; err.hidden = true;
   try {
@@ -610,11 +758,12 @@ async function doExport() {
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
     if ($('#dlg').open) $('#dlg').close();
-    toast(`${name} 파일을 내려받았습니다. 캘린더에서 가져오기를 눌러 주세요.`);
+    toast(`${name} 다운로드를 요청했습니다. 저장된 파일을 확인하고 캘린더에서 가져오기를 눌러 주세요.`);
   } catch (e) {
     err.textContent = e.message || '내보내기에 실패했습니다.'; err.hidden = false;
   } finally {
     ok.disabled = false;
+    S.exporting = false; paintActions();
   }
 }
 
@@ -642,6 +791,9 @@ async function init() {
   $('#text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runPlan(); } });
   $('#btn-plan').addEventListener('click', runPlan);
   $('#btn-sample').addEventListener('click', () => { showSample(); });
+  $('#btn-example').addEventListener('click', runExample);
+  $('#btn-restore').addEventListener('click', restorePrevious);
+  $('#btn-confirm').addEventListener('click', confirmPlan);
   $('#btn-stop').addEventListener('click', () => S.ctrl?.abort());
   $('#btn-fill').addEventListener('click', fillExample);
   $('#btn-clear').addEventListener('click', clearAll);

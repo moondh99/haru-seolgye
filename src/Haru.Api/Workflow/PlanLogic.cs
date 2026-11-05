@@ -60,9 +60,9 @@ public static class Normalizer
 
             if (item.Fixed == true && TryBuildFixed(item, minutes) is { } fixedEvent)
             {
-                var (date, start, end) = fixedEvent;
+                var (date, start, end, source) = fixedEvent;
                 var length = RoundMinutes(end - start);
-                tasks.Add(new TaskItem(id, title, length, 1, null, Clock.Hhmm(start), Clock.Hhmm(end), "fixed", note));
+                tasks.Add(new TaskItem(id, title, length, 1, null, Clock.Hhmm(start), Clock.Hhmm(end), "fixed", note, source));
 
                 if (date != c.Day)
                     deferred.Add(new Deferred(id, title, "다른 날 일정이라 오늘 시간표에는 넣지 않습니다."));
@@ -74,13 +74,14 @@ public static class Normalizer
                 continue;
             }
 
-            tasks.Add(new TaskItem(id, title, minutes ?? 0, 2, Deadline(Lookup(item.DeadlineText), c.Day), null, null, "task", note));
+            tasks.Add(new TaskItem(id, title, minutes ?? 0, 2, Deadline(Lookup(item.DeadlineText), c.Day), null, null, "task", note,
+                minutes is not null ? "input" : null));
         }
 
         if (LunchBlock(c, windowStart, windowEnd, fixedBlocks) is { } lunch) fixedBlocks.Add(lunch);
         return new NormalizeResult(tasks, fixedBlocks, deferred);
 
-        (string Date, int Start, int End)? TryBuildFixed(IntakeWireItem item, int? minutes)
+        (string Date, int Start, int End, string Source)? TryBuildFixed(IntakeWireItem item, int? minutes)
         {
             var start = Lookup(item.StartText);
             if (start is not { Ok: true, Time: not null } || !Clock.TryMinutes(start.Time, out var startMinutes)) return null;
@@ -88,12 +89,16 @@ public static class Normalizer
             var date = start.Date ?? c.Day;
             var end = Lookup(item.EndText);
             var endMinutes = startMinutes + (minutes ?? 60);
+            var source = minutes is not null ? "input" : "default";
             if (end is { Ok: true, Time: not null } && (end.Date ?? date) == date
                 && Clock.TryMinutes(end.Time, out var stated) && stated > startMinutes)
+            {
                 endMinutes = stated;
+                source = "fixed";
+            }
 
             endMinutes = Math.Min(endMinutes, 24 * 60 - 1);
-            return endMinutes > startMinutes ? (date, startMinutes, endMinutes) : null;
+            return endMinutes > startMinutes ? (date, startMinutes, endMinutes, source) : null;
         }
     }
 
@@ -156,9 +161,10 @@ public static class Normalizer
         return tasks.Select(t =>
         {
             if (t.Kind != "task") return t;
-            var m = t.Minutes > 0 ? t.Minutes : minutes is not null && minutes.TryGetValue(t.Id, out var em) ? em : 30;
+            var estimated = minutes is not null && minutes.ContainsKey(t.Id);
+            var m = t.Minutes > 0 ? t.Minutes : estimated ? minutes![t.Id] : 30;
             var p = priorities is not null && priorities.TryGetValue(t.Id, out var ep) ? ep : t.Priority;
-            return t with { Minutes = m, Priority = p };
+            return t with { Minutes = m, Priority = p, DurationSource = t.Minutes > 0 ? t.DurationSource ?? "input" : estimated ? "estimated" : "default" };
         }).ToList();
     }
 }
@@ -249,6 +255,6 @@ public static class Repair
         var kept = report.Violations
             .Where(v => !(v.Code == "NO_BUFFER" && v.BlockIds.Length > 0 && v.BlockIds.All(nonTask.Contains)))
             .ToArray();
-        return report with { Valid = kept.Length == 0, Violations = kept };
+        return report with { Valid = kept.Length == 0 && (report.Valid || report.Violations.Length > 0), Violations = kept };
     }
 }

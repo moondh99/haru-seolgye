@@ -68,7 +68,8 @@ public sealed class PlanService(
             return;
         }
 
-        if (result is not null)
+        if (result is not null && error is null && state.Failure is null
+            && result.Validation is { Valid: true, Violations.Length: 0 })
         {
             await sse.SendAsync("plan", result);
             await sse.SendAsync("done", new { elapsedMs = elapsed, source = "ai", repaired = result.Meta.Repaired });

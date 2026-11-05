@@ -14,6 +14,8 @@ flowchart TD
     critic -->|"revise"| scheduler
     critic -->|"approve"| coach["coach<br/>에이전트, fast"]
     coach --> finalize["finalize<br/>코드"]
-    finalize --> result(["plan 이벤트, done 이벤트"])
+    critic -->|"검사 무효, 모델 호출 전 중단"| invalid(["error · 확정 불가"])
+    finalize -->|"검사 누락 또는 무효"| invalid
+    finalize -->|"유효"| result(["plan 이벤트, done 이벤트"])
     result -.-> confirm{"사용자가 내보내기를 확인"}
     confirm -->|"confirmed true"| export["POST /api/export<br/>MCP export_ics"]

@@ -95,8 +95,11 @@ public class WorkflowIntegrationTests
         var proposal = plan.Tasks.Single(t => t.Id == "t1");
         Assert.Equal((120, 1, "2026-11-05T17:00:00+09:00"), (proposal.Minutes, proposal.Priority, proposal.Deadline));
         Assert.Equal(30, plan.Tasks.Single(t => t.Id == "t2").Minutes);
+        Assert.Equal("estimated", proposal.DurationSource);
+        Assert.Equal("input", plan.Tasks.Single(t => t.Id == "t2").DurationSource);
         var meeting = plan.Tasks.Single(t => t.Kind == "fixed");
         Assert.Equal(("14:00", "15:00", 60), (meeting.FixedStart, meeting.FixedEnd, meeting.Minutes));
+        Assert.Equal("fixed", meeting.DurationSource);
     }
 
     [Fact]

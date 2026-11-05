@@ -46,6 +46,16 @@ public static class ScheduleChecks
 
     public static int LoadPercent(ValidationReport? report) => (int)Math.Round((report?.LoadRatio ?? 0) * 100);
 
+    public static void RequireValid(ValidationReport? report, RunState state)
+    {
+        if (report is { Valid: true, Violations.Length: 0 }) return;
+        var failure = report is null
+            ? new PlanException("WORKFLOW_FAILED", "검증 결과가 없습니다. 다시 계획을 만들어 주세요.")
+            : new PlanException("INVALID_SCHEDULE", "규칙 위반이 남아 계획을 확정하지 않았습니다. 아래 위반과 고정 일정을 확인하고 입력이나 시간 설정을 바꿔 주세요.");
+        state.Failure = (failure.Code, failure.Message, failure.Recoverable);
+        throw failure;
+    }
+
     public static string Summary(ValidationReport report)
     {
         if (report.Valid) return $"규칙을 모두 통과했습니다. 부하 {LoadPercent(report)}%.";
@@ -229,6 +239,7 @@ public sealed class CriticExecutor : Executor<PlanContext, PlanContext>
 
     public override async ValueTask<PlanContext> HandleAsync(PlanContext c, IWorkflowContext ctx, CancellationToken ct = default)
     {
+        ScheduleChecks.RequireValid(c.Report, _s.State);
         var prompt = AgentCaller.ToJson(new
         {
             day = c.Day,
@@ -328,7 +339,8 @@ public sealed class FinalizeExecutor : Executor<PlanContext>
 
     public override async ValueTask HandleAsync(PlanContext c, IWorkflowContext ctx, CancellationToken ct = default)
     {
-        var report = c.Report ?? new ValidationReport(false, 0, 0, 0, []);
+        ScheduleChecks.RequireValid(c.Report, _s.State);
+        var report = c.Report!;
         var meta = new PlanMeta("ai", true, _s.State.SchedulerRuns, c.Repaired,
             _s.State.Clock.ElapsedMilliseconds, _s.State.Models(_s.Catalog, _s.Options));
 

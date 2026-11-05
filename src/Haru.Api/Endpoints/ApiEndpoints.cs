@@ -46,7 +46,7 @@ public static class ApiEndpoints
         if (problem is not null) return Error(problem);
 
         if (!await host.IsAvailableAsync(ct))
-            return Error(new ApiError(503, "AI_UNAVAILABLE", "지금은 AI를 쓸 수 없습니다. '샘플로 체험'으로 화면을 먼저 확인해 보세요."));
+            return Error(new ApiError(503, "AI_UNAVAILABLE", "지금은 AI를 쓸 수 없습니다. '기록 데모 보기'로 화면을 먼저 확인해 보세요."));
 
         var (verdict, lease) = limiter.TryEnter(ClientKey(http));
         switch (verdict)
@@ -87,7 +87,7 @@ public static class ApiEndpoints
                 workEnd,
                 blocks = blocks.Select(b => new { id = b.Id, title = b.Title, start = b.Start, end = b.End, kind = b.Kind }),
                 bufferMinutes = o.BufferMinutes,
-                maxLoad = 1.0,
+                maxLoad = o.MaxLoad,
             }, ct);
 
             var report = check.Deserialize<ValidationReport>(HaruJson.Lenient)

@@ -197,7 +197,7 @@ public class RepairTests
     }
 
     [Fact]
-    public async Task Plan_TwoFixedEventsOverlap_IsReportedWithoutRepair()
+    public async Task Plan_TwoFixedEventsOverlap_StopsWithoutApprovalOrFinalPlan()
     {
         var h = Scenario.Happy();
         h.Runner.Reply("intake", Scenario.Intake(
@@ -210,11 +210,44 @@ public class RepairTests
 
         var run = await h.RunAsync();
 
-        var plan = run.Plan!;
-        Assert.False(plan.Validation.Valid);
-        Assert.Contains(plan.Validation.Violations, v => v.Code == "OVERLAP");
-        Assert.False(plan.Meta.Repaired);
+        Assert.Null(run.Plan);
+        Assert.DoesNotContain("done", run.Names);
+        Assert.DoesNotContain("critique", run.Names);
+        Assert.Equal(0, h.Runner.CountOf("coach"));
+        Assert.Contains("OVERLAP", run.Of("validation").Last().Data.ToString());
         Assert.Equal(1, h.Runner.CountOf("scheduler"));
-        Assert.Equal("done", run.Names[^1]);
+        Assert.Equal("INVALID_SCHEDULE", run.Of("error").Single().Data.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Plan_RepairLimitLeavesViolations_NeverEmitsPlanOrDone()
+    {
+        var h = Scenario.Happy();
+        h.Runner.Reply("intake", Scenario.Intake(Enumerable.Range(1, 12).Select(i => Scenario.Item($"작업 {i}", minutes: 30)).ToArray()));
+        h.Runner.Reply("scheduler", Scenario.Schedule(Enumerable.Range(1, 12).Select(i => ($"t{i}", "09:00", "09:30")).ToArray()));
+
+        var run = await h.RunAsync();
+
+        Assert.Contains("repair", run.StartedAgents);
+        Assert.Null(run.Plan);
+        Assert.DoesNotContain("done", run.Names);
+        Assert.Equal(0, h.Runner.CountOf("coach"));
+        Assert.Equal("INVALID_SCHEDULE", run.Of("error").Single().Data.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public void IgnoreUserChoices_UnknownInvalidReport_DoesNotBecomeValid()
+    {
+        Assert.False(Repair.IgnoreUserChoices(new ValidationReport(false, 0, 0, 0, []), []).Valid);
+    }
+
+    [Fact]
+    public void FinalBoundary_RequiresAnExplicitValidReport()
+    {
+        var state = new RunState("test");
+        Assert.Throws<PlanException>(() => ScheduleChecks.RequireValid(null, state));
+        Assert.Throws<PlanException>(() => ScheduleChecks.RequireValid(new ValidationReport(false, 0, 0, 0, []), state));
+        Assert.Throws<PlanException>(() => ScheduleChecks.RequireValid(new ValidationReport(true, 0, 0, 0, [V("OVERLAP", "b1")]), state));
+        ScheduleChecks.RequireValid(new ValidationReport(true, 0, 0, 0, []), new RunState("valid"));
     }
 }
