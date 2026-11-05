@@ -1,0 +1,46 @@
+{
+  "day": "2026-11-05",
+  "workStart": "09:00",
+  "workEnd": "18:00",
+  "tasks": [
+    { "id": "t1", "title": "제안서 초안 작성", "minutes": 120, "priority": 1, "deadline": "2026-11-05T17:00:00+09:00", "fixedStart": null, "fixedEnd": null, "kind": "task", "note": "오늘 17시까지 제출" },
+    { "id": "t2", "title": "팀 주간 회의", "minutes": 60, "priority": 1, "deadline": null, "fixedStart": "14:00", "fixedEnd": "15:00", "kind": "fixed", "note": null },
+    { "id": "t3", "title": "메일 답장 정리", "minutes": 30, "priority": 2, "deadline": null, "fixedStart": null, "fixedEnd": null, "kind": "task", "note": null },
+    { "id": "t4", "title": "내일 발표 슬라이드 다듬기", "minutes": 45, "priority": 1, "deadline": "2026-11-06", "fixedStart": null, "fixedEnd": null, "kind": "task", "note": "내일 오전 발표" },
+    { "id": "t5", "title": "운동", "minutes": 30, "priority": 3, "deadline": null, "fixedStart": null, "fixedEnd": null, "kind": "task", "note": null },
+    { "id": "t6", "title": "주간 보고서 구조 잡기", "minutes": 45, "priority": 3, "deadline": "2026-11-09", "fixedStart": null, "fixedEnd": null, "kind": "task", "note": "다음 주 월요일까지" },
+    { "id": "t7", "title": "다음 주 세미나 자료 조사", "minutes": 90, "priority": 3, "deadline": null, "fixedStart": null, "fixedEnd": null, "kind": "task", "note": "오래 걸림" }
+  ],
+  "blocks": [
+    { "id": "b1", "taskId": "t3", "title": "메일 답장 정리", "start": "09:00", "end": "09:30", "kind": "task", "reason": "가벼운 일로 시작해 기다리는 답장을 먼저 비웁니다." },
+    { "id": "b2", "taskId": "t1", "title": "제안서 초안 작성", "start": "09:35", "end": "11:35", "kind": "task", "reason": "마감(17시)이 있는 가장 큰 일이라 집중이 잘 되는 오전에 둡니다." },
+    { "id": "b3", "taskId": null, "title": "점심", "start": "12:00", "end": "13:00", "kind": "break", "reason": "기본 점심 시간입니다." },
+    { "id": "b4", "taskId": "t4", "title": "내일 발표 슬라이드 다듬기", "start": "13:05", "end": "13:50", "kind": "task", "reason": "회의 전 빈 시간에 맞는 길이라 여기에 둡니다." },
+    { "id": "b5", "taskId": "t2", "title": "팀 주간 회의", "start": "14:00", "end": "15:00", "kind": "fixed", "reason": "정해진 일정이라 시간을 바꾸지 않습니다." },
+    { "id": "b6", "taskId": "t6", "title": "주간 보고서 구조 잡기", "start": "15:05", "end": "15:50", "kind": "task", "reason": "마감이 다음 주 월요일이라 회의 뒤 가벼운 시간에 둡니다." },
+    { "id": "b7", "taskId": "t5", "title": "운동", "start": "16:00", "end": "16:30", "kind": "task", "reason": "집중 작업 뒤에 머리를 식히기 좋습니다." }
+  ],
+  "deferred": [
+    { "taskId": "t7", "title": "다음 주 세미나 자료 조사", "reason": "오늘 넣으면 부하율이 85%를 넘어 내일 이후로 미룹니다." }
+  ],
+  "risks": [
+    { "title": "제안서 초안이 길어질 수 있음", "mitigation": "11:35에 진행도를 확인하고, 늦으면 슬라이드 작업을 15:05로 옮깁니다.", "severity": "medium" },
+    { "title": "회의가 길어지면 보고서 작업이 밀림", "mitigation": "보고서 마감이 월요일이라 내일로 옮겨도 됩니다.", "severity": "low" }
+  ],
+  "summary": "오전에는 마감이 가장 가까운 제안서에 집중하고, 오후에는 회의 앞뒤로 가벼운 일을 배치했습니다. 부하율은 69%입니다. 세미나 자료 조사는 내일 이후로 미뤘습니다.",
+  "validation": {
+    "valid": true,
+    "loadRatio": 0.69,
+    "occupiedMinutes": 330,
+    "availableMinutes": 480,
+    "violations": []
+  },
+  "meta": {
+    "source": "offline-sample",
+    "aiGenerated": false,
+    "iterations": 1,
+    "repaired": false,
+    "elapsedMs": 0,
+    "models": null
+  }
+}

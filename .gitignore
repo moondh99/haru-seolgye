@@ -1,0 +1,24 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.log
+node_modules/
+.scratch/
+.aspire/
+.DS_Store
+
+# Secrets and local settings
+.env
+.env.*
+*.pfx
+*.pem
+*.key
+secrets.json
+
+# Azure Developer CLI environment state (the deployment plan in .azure/ is kept)
+.azure/*/
+
+# Internal work order for the coding agents
+BRIEF.md

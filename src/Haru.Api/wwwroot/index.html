@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="할 일을 붙여 넣으면 에이전트 팀이 충돌 없는 하루 시간표를 만듭니다. 로그인 없이 사용합니다.">
+  <title>하루설계 — 흩어진 할 일을 충돌 없는 하루 시간표로</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">본문으로 건너뛰기</a>
+
+  <header class="top">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 48 48" width="40" height="40" aria-hidden="true" focusable="false">
+        <rect width="48" height="48" rx="12" class="logo-bg"/>
+        <path d="M10 30h28" class="logo-line"/>
+        <path d="M15 30a9 9 0 0 1 18 0" class="logo-line"/>
+        <path d="M24 12v4M12.5 17.5l2.8 2.8M35.5 17.5l-2.8 2.8" class="logo-ray"/>
+        <path d="M14 36h20" class="logo-ray soft"/>
+      </svg>
+      <div>
+        <h1>하루설계</h1>
+        <p class="tag">할 일을 붙여 넣으면, 에이전트 팀이 충돌 없는 하루 시간표를 만듭니다.</p>
+      </div>
+    </div>
+    <div class="status" id="status" data-state="checking" role="status">
+      <span class="dot" aria-hidden="true"></span><span id="status-text">연결 확인 중…</span>
+    </div>
+  </header>
+
+  <main id="main">
+    <div id="banner" class="banner" role="alert" hidden></div>
+
+    <div class="top-grid">
+      <section class="panel" aria-labelledby="h-input">
+        <h2 id="h-input"><span class="num">1</span>오늘 할 일</h2>
+        <label for="text" class="sr-only">오늘 할 일 원문</label>
+        <textarea id="text" rows="10" maxlength="3000" spellcheck="false"
+          placeholder="메모, 메신저, 회의록에서 복사한 글을 그대로 붙여 넣으세요.&#10;예) 14시 팀 회의 (1시간)&#10;제안서 초안 작성, 오늘 17시까지&#10;운동 30분"></textarea>
+        <div class="meta-row">
+          <span id="count" class="count">0 / 3,000자</span>
+          <span class="links">
+            <button type="button" class="link" id="btn-fill">예시 입력 넣기</button>
+            <button type="button" class="link" id="btn-clear">지우기</button>
+          </span>
+        </div>
+
+        <details class="settings">
+          <summary>시간 설정</summary>
+          <div class="time-grid">
+            <label>근무 시작<input type="time" id="workStart" value="09:00"></label>
+            <label>근무 종료<input type="time" id="workEnd" value="18:00"></label>
+            <label>점심 시작<input type="time" id="lunchStart" value="12:00"></label>
+            <label>점심 종료<input type="time" id="lunchEnd" value="13:00"></label>
+          </div>
+          <p class="hint">점심을 두지 않으려면 점심 시작과 종료를 모두 비웁니다.</p>
+        </details>
+
+        <div class="actions">
+          <button type="button" class="btn primary" id="btn-plan">하루 계획 만들기</button>
+          <button type="button" class="btn" id="btn-sample">샘플로 체험</button>
+          <button type="button" class="btn ghost" id="btn-stop" hidden>중지</button>
+        </div>
+        <p class="notice">로그인 없이 사용합니다. 입력은 계획을 만드는 동안에만 쓰고 데이터베이스에 저장하지 않습니다. 개인정보와 비밀번호는 넣지 마세요.</p>
+      </section>
+
+      <section class="panel" id="agents-panel" aria-labelledby="h-agents">
+        <h2 id="h-agents"><span class="num">2</span>에이전트 팀 <small id="agents-state">대기 중</small></h2>
+        <p class="lede">에이전트는 판단을 맡고, 날짜 해석과 충돌 검사는 도구가 계산합니다.</p>
+        <ol class="steps" id="steps" aria-busy="false"></ol>
+        <div id="tasks-box" class="tasks-box" hidden>
+          <h3>AI가 이해한 할 일</h3>
+          <ul id="tasks" class="task-list"></ul>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel result" id="result" aria-labelledby="h-result" hidden>
+      <div class="result-head">
+        <h2 id="h-result" tabindex="-1"><span class="num">3</span>오늘의 시간표 <small id="res-day"></small></h2>
+        <div class="badges">
+          <span class="badge ai" id="badge-source">AI가 만든 제안</span>
+          <span class="badge draft" id="badge-draft" hidden>초안</span>
+        </div>
+      </div>
+      <p class="summary" id="res-summary" hidden></p>
+
+      <dl class="vitals" id="vitals" hidden>
+        <div class="vital"><dt>충돌 검사</dt><dd id="v-valid">-</dd></div>
+        <div class="vital"><dt>하루 부하</dt><dd><span id="v-load">-</span><span class="bar" aria-hidden="true"><i id="v-bar"></i></span></dd></div>
+        <div class="vital"><dt>배치한 시간</dt><dd id="v-occ">-</dd></div>
+        <div class="vital"><dt>실행</dt><dd id="v-run">-</dd></div>
+      </dl>
+
+      <div class="cols">
+        <div>
+          <ul class="legend" aria-label="범례">
+            <li class="p1">우선순위 높음</li><li class="p2">보통</li><li class="p3">낮음</li><li class="fixed">고정 일정</li><li class="break">휴식</li>
+          </ul>
+          <div class="timeline" id="timeline" role="list" aria-label="시간표"></div>
+        </div>
+        <div class="side">
+          <h3>배치 이유</h3>
+          <ol class="reasons" id="reasons"></ol>
+          <div id="deferred-box" hidden><h3>오늘 하기 어려운 일</h3><ul class="plain" id="deferred"></ul></div>
+          <div id="risks-box" hidden><h3>위험 요소와 대응</h3><ul class="plain" id="risks"></ul></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn primary" id="btn-export">캘린더(.ics)로 내보내기</button>
+        <button type="button" class="btn" id="btn-copy">텍스트로 복사</button>
+      </div>
+      <p class="disclaimer" id="res-disclaimer">AI가 만든 제안입니다. 시간 계산과 충돌 검사는 도구가 했지만, 일정의 최종 판단은 직접 해 주세요.</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>GitHub Copilot SDK · Microsoft Agent Framework · MCP · Azure Container Apps — 2026 청도 바이브코딩 해커톤</p>
+  </footer>
+
+  <dialog id="dlg" aria-labelledby="dlg-title">
+    <form method="dialog" id="dlg-form">
+      <h2 id="dlg-title">캘린더 파일로 내보낼까요?</h2>
+      <p id="dlg-body"></p>
+      <ul class="points">
+        <li>AI가 만든 제안입니다. 캘린더에 가져오기 전에 시각을 직접 확인해 주세요.</li>
+        <li>휴식 블록은 내보내지 않습니다.</li>
+        <li>서버는 파일을 저장하지 않습니다.</li>
+      </ul>
+      <p id="dlg-error" class="dlg-error" role="alert" hidden></p>
+      <div class="actions end">
+        <button type="submit" class="btn" value="cancel" id="dlg-cancel">취소</button>
+        <button type="button" class="btn primary" id="dlg-ok">내려받기</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <div id="live" class="sr-only" aria-live="polite"></div>
+</body>
+</html>

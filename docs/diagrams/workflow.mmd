@@ -1,0 +1,19 @@
+flowchart TD
+    input(["원문 입력"]) --> intake["intake<br/>에이전트, fast, 도구 없음"]
+    intake --> normalize["normalize<br/>코드, MCP resolve_date"]
+    normalize --> estimator["estimator<br/>에이전트, fast"]
+    normalize --> prioritizer["prioritizer<br/>에이전트, fast"]
+    estimator --> merge["merge<br/>코드, 팬인 장벽"]
+    prioritizer --> merge
+    merge --> scheduler["scheduler<br/>에이전트, smart<br/>find_free_slots, validate_schedule"]
+    scheduler --> validator["validator<br/>코드, MCP validate_schedule"]
+    validator -->|"유효 또는 고정 일정 위반만"| critic["critic<br/>에이전트, smart"]
+    validator -->|"무효, 실행 2회 미만"| scheduler
+    validator -->|"무효, 실행 2회"| repair["repair<br/>코드"]
+    repair --> critic
+    critic -->|"revise"| scheduler
+    critic -->|"approve"| coach["coach<br/>에이전트, fast"]
+    coach --> finalize["finalize<br/>코드"]
+    finalize --> result(["plan 이벤트, done 이벤트"])
+    result -.-> confirm{"사용자가 내보내기를 확인"}
+    confirm -->|"confirmed true"| export["POST /api/export<br/>MCP export_ics"]

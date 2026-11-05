@@ -1,0 +1,25 @@
+flowchart TD
+    user["사용자 브라우저"]
+    gh["GitHub Copilot 서비스"]
+    subgraph azure["Azure, koreacentral"]
+        subgraph cae["Container Apps 환경 haru-env"]
+            api["api, Haru.Api<br/>외부 ingress<br/>0.5 vCPU, 1 GiB"]
+            cli["Copilot 런타임<br/>api 안의 하위 프로세스"]
+            mcp["mcp, Haru.Mcp<br/>내부 ingress<br/>0.25 vCPU, 0.5 GiB"]
+        end
+        secret["Container Apps secret<br/>copilot-github-token"]
+        mi["사용자 할당 관리 ID<br/>AcrPull"]
+        acr["Container Registry<br/>Basic"]
+        ai["Application Insights<br/>haru-insights"]
+        law["Log Analytics<br/>haru-logs"]
+    end
+    user -->|"HTTPS, SSE"| api
+    api -->|"stdio"| cli
+    cli -->|"HTTPS, 토큰"| gh
+    api -->|"MCP, Streamable HTTP"| mcp
+    secret -.->|"환경 변수 COPILOT_GITHUB_TOKEN"| api
+    mi -->|"이미지 가져오기"| acr
+    api -->|"OpenTelemetry"| ai
+    mcp -->|"OpenTelemetry"| ai
+    ai --> law
+    cae -->|"콘솔 로그"| law
