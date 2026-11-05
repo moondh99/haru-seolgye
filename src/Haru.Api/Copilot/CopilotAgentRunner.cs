@@ -6,6 +6,7 @@ using Haru.Api.Agents;
 using Haru.Api.Config;
 using Haru.Api.Mcp;
 using Microsoft.Agents.AI;
+using Microsoft.Agents.AI.GitHub.Copilot;
 using Microsoft.Extensions.AI;
 
 namespace Haru.Api.Copilot;
@@ -34,6 +35,7 @@ public sealed class CopilotAgentRunner(
         limit.CancelAfter(TimeSpan.FromSeconds(options.AgentTimeoutSeconds));
         var token = limit.Token;
         var clock = Stopwatch.StartNew();
+        AgentSession? session = null;
 
         try
         {
@@ -76,7 +78,7 @@ public sealed class CopilotAgentRunner(
                 .UseOpenTelemetry("Haru.Agents", o => o.EnableSensitiveData = false)
                 .Build();
 
-            var session = await agent.CreateSessionAsync(token);
+            session = await agent.CreateSessionAsync(token);
 
             var messages = new List<(string? Id, StringBuilder Text)>();
             var pending = new StringBuilder();
@@ -123,6 +125,12 @@ public sealed class CopilotAgentRunner(
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             throw new TimeoutException($"Agent '{spec.Id}' did not finish within {options.AgentTimeoutSeconds} s.");
+        }
+        finally
+        {
+            // Session events hold the prompt text. Delete them, so no user text stays on disk.
+            if (session is GitHubCopilotAgentSession { SessionId: { Length: > 0 } id })
+                await host.DeleteSessionAsync(id);
         }
     }
 }

@@ -46,6 +46,7 @@ flowchart TD
 - 경로: `GET /api/config`(한도, `aiAvailable`), `POST /api/plan`(응답은 SSE 스트림), `GET /api/sample`(샘플 입력·결과, 기록된 실행 `events`), `POST /api/export`(`text/calendar`, `confirmed: true` 필요), `GET /health`, `GET /alive`이다. 필드와 오류 형식은 [docs/api-contract.md](docs/api-contract.md)가 정한다.
 - 한도: 입력 3,000자, 본문 64 KB, IP당 10분에 8회, 동시 계획 3개, 하루 250회(한국 표준시 KST), 계획 120초, 에이전트 호출 60초이다. 환경 변수로 바꾸는 값은 `HaruOptions.cs`에 있다.
 - 저장: 서버 코드에 데이터베이스가 없다. 사용 한도 계수는 메모리에만 둔다. 브라우저가 입력과 마지막 결과를 `localStorage`(`haru.v1`)에 저장하고 `지우기` 버튼이 지운다. Copilot 런타임이 남기는 파일은 9장에 있다.
+- 동시 실행 한도(`BUSY`, 503): UI가 5초 간격으로 최대 12번 다시 요청한다. 기다리는 동안 안내 배너와 "대기 중" 상태를 보여 주고, `중지`로 멈출 수 있다. 12번 뒤에도 `BUSY`이면 아래 대체 경로로 간다.
 - AI를 쓸 수 없을 때: 입력 오류(`INPUT_EMPTY`, `INPUT_TOO_LONG`, `BAD_REQUEST`)와 `NO_TASKS`를 뺀 모든 오류에서 UI가 `GET /api/sample`을 불러온다. 항상 "내 입력으로 만든 결과가 아닙니다"를 함께 보여 준다.
   - 기록된 실제 실행(`sample-run.json`, SSE 이벤트 37개)이 있으면 재생한다. 배지는 "기록된 실행 재생 · AI 호출 없음"이다. `smoke_plan.py --save`가 기록을 만든다. 기록 파일이 있으면 api가 시작할 때 `plan`·`done` 이벤트가 있고 `error` 이벤트가 없는지 검사한다. 어긋나면 시작하지 않는다.
   - 기록이 없으면 정적 샘플(`meta.source = offline-sample`)을 보여 준다. 배지는 "오프라인 샘플 · AI 호출 없음"이다.
@@ -126,7 +127,7 @@ dotnet tool restore
 env Azure__SubscriptionId=<구독 ID> Azure__Location=koreacentral Azure__ResourceGroup=rg-haru dotnet aspire deploy --clear-cache --non-interactive
 ```
 - `--clear-cache`는 필수이다. 없으면 Aspire가 매개변수를 `~/.aspire/deployments/<해시>/production.json`에 평문으로 저장하고, 저장된 값이 환경 변수보다 앞선다.
-- 배포 결과(2026-11-05): 28단계 모두 성공, 3분 31초. 첫 시도는 Express 한도로 실패했고, 환경 모드를 고정한 두 번째 시도가 성공했다. 확인한 것: `/health` 200, `/api/config`, `/api/sample`, 보안 헤더, 브라우저 UI 테스트 12건(`.ics` 내보내기 포함, 내부 `mcp` 호출 증명), Log Analytics의 `api`·`mcp` 행이다. 프로브(Liveness `/alive`, Readiness `/health`)를 더한 재배포(14:07, 1분 32초)도 성공했고, `/alive`·`/health`·보안 헤더·UI 테스트 12건을 다시 통과했다. 토큰은 `unset`이므로 `aiAvailable`은 `false`이고 화면은 기록된 실행을 재생한다.
+- 배포 결과(2026-11-05): 28단계 모두 성공, 3분 31초. 첫 시도는 Express 한도로 실패했고, 환경 모드를 고정한 두 번째 시도가 성공했다. 확인한 것: `/health` 200, `/api/config`, `/api/sample`, 보안 헤더, 브라우저 UI 테스트 12건(`.ics` 내보내기 포함, 내부 `mcp` 호출 증명), Log Analytics의 `api`·`mcp` 행이다. 프로브(Liveness `/alive`, Readiness `/health`)를 더한 재배포(14:07, 1분 32초)도 성공했고, `/alive`·`/health`·보안 헤더·UI 테스트 12건을 다시 통과했다. 그 뒤 스크립트로 토큰을 넣었다. `aiAvailable`이 `true`가 되었고, Azure 배포본에서 `smoke_plan.py`가 실제 AI로 유효한 계획을 만들었다(39.4초, 39.3초, 부하 78%).
 - 비용: 월 약 21~23달러(유휴, 약 하루 0.7달러)로 추정한다. 목록 가격이며 청구서는 확인하지 않았다. 지우려면 `az group delete -n rg-haru --yes`를 실행한다.
 
 ## 8. 관측과 운영
@@ -145,12 +146,17 @@ env Azure__SubscriptionId=<구독 ID> Azure__Location=koreacentral Azure__Resour
 6. 부작용이 있는 유일한 동작인 ICS 내보내기는 사용자 확인과 재검증을 거친다.
 7. UI는 `textContent`만 쓰고 `innerHTML`을 쓰지 않는다. CSP(Content Security Policy)는 `default-src 'self'`, 인라인 스크립트·스타일 금지, `frame-ancestors 'none'`이다. `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`도 보내고 HTTPS에서는 HSTS(브라우저에 HTTPS만 쓰라고 알리는 헤더)를 켠다. 처리하지 못한 예외는 고정 응답 500 `INTERNAL`로 바꾼다.
 - 평가: `tests/eval/injection_eval.py`가 공격 문자열 11개를 실행 중인 서버에 보낸다. 지시 무시, 프롬프트 노출, 가짜 시스템 메시지, JSON 탈출, 도구 오용, 비밀 유출, 제약 우회, XSS(교차 사이트 스크립팅), 보이지 않는 문자, 120개 항목 폭주, 하위 단계 주입이다. 사람이 직접 실행한다. 2026-11-05에 11개 모두 통과했다. 비밀·지침 노출 없음, 공격 문장 되풀이 없음, 유효한 시간표, 근무 시간 안, 작업 30개 이하, 제어 문자 없음을 확인했다. 방어의 증명이 아니다. FIDES 같은 연구 시스템과 같은 수준의 보증을 주장하지 않는다.
-- 저장: 데이터베이스와 로그인이 없다. 입력은 GitHub Copilot 서비스로 전송된다. Copilot 런타임이 `HARU_COPILOT_HOME`(컨테이너에서는 `/tmp/haru-copilot`) 아래 `session-state/<id>/events.jsonl`에 프롬프트를 포함한 이벤트를 남긴다(로컬 실행에서 확인, 컨테이너는 추정). 지우는 코드는 없다("예정"). 볼륨을 붙이지 않았으므로 컨테이너를 다시 시작하면 사라진다.
-- 책임 있는 AI: 모든 AI 결과에 `meta.aiGenerated`, "AI가 만든 제안" 배지, 고지 문구를 붙인다. `.ics` 설명 끝에 "AI가 만든 제안입니다(하루설계)"를 넣는다. 샘플과 재생에는 "AI 호출 없음"을 표시한다. 내보내기 전에 확인 대화상자를 띄운다. 모든 블록에 이유가 있다. 입력 글자 수 한도를 보여 주고 개인정보와 비밀번호를 넣지 말라고 안내한다.
+- 저장: 데이터베이스와 로그인이 없다. 입력은 GitHub Copilot 서비스로 전송된다. 화면은 실행 버튼 옆에서 이 사실을 고지한다(`#ai-notice`, 버튼의 `aria-describedby`).
+  - Copilot 런타임은 `HARU_COPILOT_HOME`(컨테이너에서는 `/tmp/haru-copilot`) 아래 `session-state/<id>/`에 프롬프트를 포함한 이벤트를 쓴다. 로컬과 컨테이너에서 확인했다(정리 코드 전 배포본에 13개, 약 312 KB).
+  - `CopilotAgentRunner`는 에이전트 호출마다 `finally`에서 세션을 지운다(`CopilotHost.DeleteSessionAsync`, 제한 10초). 취소와 오류에도 지운다.
+  - api는 Copilot 클라이언트를 시작할 때 `session-state` 폴더를 지운다(`ClearSessionState`). 이전 프로세스가 남긴 기록이 사라진다.
+  - 로컬 실측(2026-11-05): 계획 1회(32.4초) 뒤 남은 세션 폴더 0개, 9초에 중지한 뒤 0개이다. 단위 테스트 3건이 있다(`CopilotSessionCleanupTests`).
+  - 로그와 트레이스에는 사용자 텍스트를 넣지 않는다. 요청 경로, 도구 이름, 결과, 시간 같은 운영 기록은 Log Analytics가 30일 보관한다. 브라우저 `localStorage`는 `지우기`가 지운다. 화면의 "데이터 처리와 보존" 안내(`#privacy`)가 이 규칙을 보여 준다.
+- 책임 있는 AI: 실행 전에 외부 AI 전송을 고지한다. 모든 AI 결과에 `meta.aiGenerated`, "AI가 만든 제안" 배지, 고지 문구를 붙인다. `.ics` 설명 끝에 "AI가 만든 제안입니다(하루설계)"를 넣는다. 샘플과 재생에는 "AI 호출 없음"을 표시한다. 내보내기 전에 확인 대화상자를 띄운다. 모든 블록에 이유가 있다. 입력 글자 수 한도를 보여 주고 개인정보와 비밀번호를 넣지 말라고 안내한다.
 
 ## 10. 테스트와 완료 기준
 ```bash
-dotnet test                                           # 단위·통합 테스트. 2026-11-05 결과: Mcp 421건, Api 850건, 실패 0건
+dotnet test                                           # 단위·통합 테스트. 2026-11-05 결과: Mcp 421건, Api 853건, 실패 0건
 python3 -m unittest discover -s tests/scripts        # 토큰 스크립트 오프라인 테스트 4건. Azure를 호출하지 않는다
 python3 tests/eval/smoke_plan.py --url <주소>          # 실서버 계획 1회 점검. --save는 기록을 저장한다
 python3 tests/eval/injection_eval.py --url <주소>      # 프롬프트 주입 11건. 사람이 실행한다
@@ -158,14 +164,15 @@ python3 tests/eval/injection_eval.py --url <주소>      # 프롬프트 주입 1
 - `Haru.Mcp.Tests`: 날짜 해석, 빈 시간대, 시간표 검증, ICS 생성, 실제 MCP 서버에 클라이언트로 붙는 통합 테스트(`McpServerLiveTests`)이다.
 - `Haru.Api.Tests`: 실제 `Haru.Api` 앱을 메모리에서 띄운다. 에이전트 실행기, MCP 게이트웨이, Copilot 호스트는 오프라인 가짜로 바꾼다. 경로 선택, repair, 정제, 사용 한도, 엔드포인트, 워크플로를 검사한다. 모델 품질은 위의 두 스크립트가 실서버로 확인한다.
 - 실측(실제 Copilot, 실제 MCP, 샘플 입력): 계획 1회가 28.7~37초이다. intake 4~5초, estimator·prioritizer 병렬 약 4초, scheduler 약 13초(도구 호출 2회), critic 4~6초, coach 약 3초이다. 결과는 유효, 부하 78~84%, 위반 0건, scheduler 1회이다. 주입 평가는 11개 중 11개 통과이다.
-- 완료 기준: 샘플 입력의 결과가 유효하고 위반 0건이다. 계획 1회가 120초 안에 끝난다. `confirmed` 없는 `POST /api/export`는 400 `NOT_CONFIRMED`이다. 토큰이 없어도 재생 또는 샘플로 핵심 화면이 동작한다. `dotnet test`가 통과한다(Mcp 421건, Api 850건, 2026-11-05 확인).
+- 완료 기준: 샘플 입력의 결과가 유효하고 위반 0건이다. 계획 1회가 120초 안에 끝난다. `confirmed` 없는 `POST /api/export`는 400 `NOT_CONFIRMED`이다. 토큰이 없어도 재생 또는 샘플로 핵심 화면이 동작한다. `dotnet test`가 통과한다(Mcp 421건, Api 853건, 2026-11-05 확인).
 
 ## 11. 위험과 한계
 - 실제 AI에는 Copilot 권한이 있는 토큰이 필요하다. 토큰이 없으면 기록 재생 또는 샘플이 나온다.
 - 모델이 조용히 다른 모델로 바뀔 수 있다. `meta.models`로 확인한다.
-- Copilot 상태 파일을 지우는 코드가 없다. 컨테이너를 다시 시작할 때까지 쌓인다("예정": 정리 작업).
+- 세션 삭제가 실패하면(제한 10초 초과 등) 그 세션 기록은 다음 시작 때까지 남는다. 실패는 예외 종류만 로그에 남긴다.
+- 실제 AI는 세분화된 토큰의 만료일까지만 동작한다. 만료되면 화면이 기록된 실행 재생으로 돌아간다.
 - 사용 한도는 복제본마다 메모리에서 센다. api에 고정 세션을 켰지만 복제본끼리 한도를 공유하지 않는다(TDD 13).
 - Copilot CLI 런타임을 빌드 때 `github.com`에서 내려받는다. 이미지는 `linux-x64`만 지원한다.
 - Container Apps ingress는 요청을 약 240초에 끊는다. 계획 1회는 약 30초이다.
 - validator는 규칙 6개만 검사한다. 주입 평가는 사람이 실행하는 11건이다.
-- 미확인: Azure에서 실제 Copilot 호출(배포본에 토큰을 넣지 않았다), 월 비용 추정(목록 가격이며 청구서는 보지 않았다), 유휴 메모리 약 186 MiB(스파이크 측정값이며 배포본은 재지 않았다)이다. ASD-STE100과 ISO 24495-1 준수는 자동 검사 도구가 없어 손으로 점검한다.
+- 미확인: 월 비용 추정(목록 가격이며 청구서는 보지 않았다), 유휴 메모리 약 186 MiB(스파이크 측정값이며 배포본은 재지 않았다)이다. ASD-STE100과 ISO 24495-1 준수는 자동 검사 도구가 없어 손으로 점검한다.

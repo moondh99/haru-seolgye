@@ -73,6 +73,8 @@ const ERR_TITLE = {
 };
 const NO_SAMPLE = new Set(['INPUT_EMPTY', 'INPUT_TOO_LONG', 'BAD_REQUEST', 'NO_TASKS']);
 const STORE = 'haru.v1';
+const BUSY_WAIT_MS = 5000;
+const BUSY_TRIES = 13;
 const FALLBACK_INPUT = '오늘 할 일\n- 14시 팀 주간 회의 (1시간)\n- 제안서 초안 작성, 오늘 17시까지\n- 밀린 메일 답장 정리\n- 운동 30분';
 
 const S = { config: null, running: false, mode: 'idle', ctrl: null, plan: null, cur: null, tasks: null, view: null, ag: {}, sig: '', persist: null, tick: 0, t0: 0, error: null };
@@ -440,12 +442,23 @@ async function runPlan() {
   const ctrl = (S.ctrl = new AbortController());
   let finished = false;
   try {
-    const res = await fetch('/api/plan', {
-      method: 'POST', signal: ctrl.signal,
-      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify({ text, ...settings }),
-    });
-    if (!res.ok) { const e = await readError(res); await fail(e.code, e.message); return; }
+    let res;
+    for (let attempt = 1; ; attempt++) {
+      res = await fetch('/api/plan', {
+        method: 'POST', signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({ text, ...settings }),
+      });
+      if (res.ok) break;
+      const e = await readError(res);
+      // Other people can fill all run slots. Wait for a free slot instead of showing an error at once.
+      if (e.code !== 'BUSY' || attempt >= BUSY_TRIES) { await fail(e.code, e.message); return; }
+      $('#agents-state').textContent = '대기 중';
+      banner('info', '다른 계획이 끝나기를 기다립니다', `빈자리가 생기면 자동으로 시작합니다. (${attempt}/${BUSY_TRIES - 1})`);
+      await sleep(BUSY_WAIT_MS, ctrl.signal);
+    }
+    hideBanner();
+    $('#agents-state').textContent = '실행 중';
     for await (const { event, data } of parseSse(res)) {
       handleEvent(event, data);
       if (event === 'done' || event === 'error') finished = true;

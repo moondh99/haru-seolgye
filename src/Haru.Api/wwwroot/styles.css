@@ -132,6 +132,10 @@ textarea:focus { border-color: var(--accent); }
 input[type="time"] { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); min-height: 40px; }
 .hint { color: var(--ink-3); font-size: .8rem; padding-bottom: 12px; }
 .notice { margin-top: 12px; font-size: .82rem; color: var(--ink-3); }
+.notice strong { color: var(--ink-2, inherit); }
+.privacy { margin-top: 6px; font-size: .82rem; color: var(--ink-3); }
+.privacy summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
+.privacy ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 4px; }
 
 /* buttons */
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }

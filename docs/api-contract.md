@@ -99,7 +99,7 @@ API는 `fixed` 블록끼리 이웃해서 생기는 `NO_BUFFER`를 위반으로 �
 | 422 | `INVALID_SCHEDULE` | 내보낼 시간표가 검증을 통과하지 못함 |
 | 429 | `RATE_LIMITED`, `DAILY_CAP` | 사용량 제한 |
 | 500 | `INTERNAL` | 처리하지 못한 예외. 고정 문구만 보낸다. |
-| 503 | `BUSY`, `AI_UNAVAILABLE` | 동시 실행 한도 초과, AI 미연결. 내보내기에서는 `AI_UNAVAILABLE`이 변환 도구 연결 실패를 뜻한다. |
+| 503 | `BUSY`, `AI_UNAVAILABLE` | 동시 실행 한도 초과, AI 미연결. 내보내기에서는 `AI_UNAVAILABLE`이 변환 도구 연결 실패를 뜻한다. 웹 UI는 `BUSY`에 5초 간격으로 최대 12번 다시 요청한다. |
 
 ### 2.1 SSE 이벤트
 

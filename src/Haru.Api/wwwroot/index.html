@@ -61,11 +61,20 @@
         </details>
 
         <div class="actions">
-          <button type="button" class="btn primary" id="btn-plan">하루 계획 만들기</button>
+          <button type="button" class="btn primary" id="btn-plan" aria-describedby="ai-notice">하루 계획 만들기</button>
           <button type="button" class="btn" id="btn-sample">샘플로 체험</button>
           <button type="button" class="btn ghost" id="btn-stop" hidden>중지</button>
         </div>
-        <p class="notice">로그인 없이 사용합니다. 입력은 계획을 만드는 동안에만 쓰고 데이터베이스에 저장하지 않습니다. 개인정보와 비밀번호는 넣지 마세요.</p>
+        <p class="notice" id="ai-notice"><strong>‘하루 계획 만들기’를 누르면 입력한 글이 외부 AI 서비스(GitHub Copilot 모델)로 전송됩니다.</strong> 개인정보와 비밀번호는 넣지 마세요. ‘샘플로 체험’은 AI를 호출하지 않습니다. 로그인은 필요 없습니다.</p>
+        <details class="privacy" id="privacy">
+          <summary>데이터 처리와 보존</summary>
+          <ul>
+            <li>서버: 입력을 데이터베이스에 저장하지 않습니다. AI 세션 기록은 호출하는 동안에만 임시 폴더에 두고, 호출이 끝나면 지웁니다.</li>
+            <li>로그: 입력한 글은 남기지 않습니다. 요청 경로, 도구 이름, 결과, 걸린 시간 같은 운영 기록은 30일 동안 보존합니다.</li>
+            <li>브라우저: 마지막 입력과 계획을 이 브라우저에만 저장합니다. ‘지우기’를 누르면 삭제됩니다.</li>
+            <li>AI 결과는 틀릴 수 있습니다. 시간 겹침과 근무 시간 규칙은 도구가 다시 검사합니다.</li>
+          </ul>
+        </details>
       </section>
 
       <section class="panel" id="agents-panel" aria-labelledby="h-agents">

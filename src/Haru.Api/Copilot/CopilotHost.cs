@@ -18,6 +18,7 @@ public class CopilotHost(HaruOptions options, ILogger<CopilotHost> log) : IAsync
         {
             if (_client is not null) return _client;
             Directory.CreateDirectory(options.CopilotHome);
+            ClearSessionState();
             var clientOptions = new CopilotClientOptions
             {
                 Mode = CopilotClientMode.Empty,
@@ -69,6 +70,35 @@ public class CopilotHost(HaruOptions options, ILogger<CopilotHost> log) : IAsync
         }
         _auth = (ok, DateTimeOffset.UtcNow);
         return ok;
+    }
+
+    /// <summary>Deletes a finished session and its stored events. A failure is logged and not thrown.</summary>
+    public virtual async Task DeleteSessionAsync(string sessionId)
+    {
+        if (_client is null) return;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try
+        {
+            await _client.DeleteSessionAsync(sessionId, cts.Token);
+        }
+        catch (Exception e)
+        {
+            log.LogWarning("Could not delete a Copilot session: {Error}", e.GetType().Name);
+        }
+    }
+
+    // Removes sessions left by an earlier process, for example after a crash.
+    internal void ClearSessionState()
+    {
+        var state = Path.Combine(options.CopilotHome, "session-state");
+        try
+        {
+            if (Directory.Exists(state)) Directory.Delete(state, recursive: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning("Could not clear old Copilot sessions: {Error}", e.GetType().Name);
+        }
     }
 
     public async ValueTask DisposeAsync()
