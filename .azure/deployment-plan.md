@@ -2,7 +2,7 @@
 
 > **Status:** Deployed
 
-Live endpoint: https://api.proudbush-c0263160.koreacentral.azurecontainerapps.io (verified 2026-11-05 13:44 KST). The `mcp` app has no public endpoint.
+Live endpoint: https://api.proudbush-c0263160.koreacentral.azurecontainerapps.io (verified 2026-11-05 16:32 KST). The `mcp` app has no public endpoint.
 
 Generated: 2026-11-05 13:28 KST
 
@@ -164,6 +164,48 @@ Permissions: the deploying account has Owner on the subscription (needed for the
 ---
 
 ## 7. Validation Proof
+
+### Approved application-only redeploy (2026-11-05 16:28 KST)
+
+The user approves commit, push, and redeploy to the existing `rg-haru` in
+`koreacentral`, using the existing Azure for Students subscription.
+Submission is explicitly prohibited. No additional live AI calls are approved.
+
+All validation checks pass:
+- [x] Existing Aspire recipe applies; no AZD environment is created.
+- [x] `dotnet tool restore` succeeds.
+- [x] `dotnet build -v quiet --no-restore`: 0 warnings, 0 errors.
+- [x] `dotnet test --no-build -v quiet`: MCP 421 and API 858 pass.
+- [x] `node --test tests/Haru.Api.Tests/app.test.mjs`: 16 pass.
+- [x] `git diff --check` passes.
+- [x] AppHost, pinned tools, and Aspire config are unchanged from the deployed revision.
+- [x] Static review retains the same WorkloadProfiles environment, identity, registry,
+  internal MCP ingress, probes, and resource-scoped AcrPull role.
+- [x] Docker responds with version 29.6.2.
+- [x] Existing resource group is in koreacentral; its environment is Succeeded.
+- [x] Live AcrPull assignment exists on the existing registry.
+
+The earlier generated-infrastructure validation remains applicable because the
+deployment definition and pinned toolchain have not changed. The previous
+local live-AI verification covers this application code; no new paid AI run occurs.
+
+### Redeploy proof (16:29–16:32 KST)
+
+Application source commit: `823c06380573c4dfe6c6622c7a8731cf07e2360d`.
+The following documentation-only commit records this deployment.
+
+| Check | Result |
+|-------|--------|
+| Approved Aspire deploy with `--clear-cache` | 28/28 steps, 1 min 48 s, completed at 16:31:29 |
+| Existing secret restoration | Memory and stdin only; `aiAvailable: true` |
+| `/health`, `/api/config` | HTTP 200 |
+| Public HTML, JS, CSS | Byte-for-byte match with source |
+| API revision | `api--0000008`, Succeeded, Running, latestReady |
+| MCP revision | `mcp--0000004`, Succeeded, Running, latestReady, internal ingress |
+| Image tag | `aspire-deploy-20261105072941` on both apps |
+| Registry access | Existing resource-scoped AcrPull role retained |
+| Additional paid AI requests | None |
+| Competition submission | Not performed; explicitly prohibited by the user |
 
 | Check | Command Run | Result | Timestamp |
 |-------|-------------|--------|-----------|
