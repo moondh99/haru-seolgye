@@ -147,13 +147,14 @@ public sealed class ValidatorExecutor : Executor<PlanContext, PlanContext>
     {
         var clock = Stopwatch.StartNew();
         await _s.AgentStarted(ctx, "validator", Role, null, ct);
+        var callId = Guid.NewGuid().ToString("N");
         await RunServices.Emit(ctx, "tool_call",
-            new { agent = "validator", tool = "validate_schedule", args = new { blocks = $"{c.Blocks.Count}개" } }, ct);
+            new { agent = "validator", tool = "validate_schedule", args = new { blocks = $"{c.Blocks.Count}개" }, callId }, ct);
 
         var report = await ScheduleChecks.ValidateAsync(_s.Mcp, _s.Options, c, c.Blocks, ct);
 
         await RunServices.Emit(ctx, "tool_result",
-            new { agent = "validator", tool = "validate_schedule", ok = true, summary = ScheduleChecks.Summary(report) }, ct);
+            new { agent = "validator", tool = "validate_schedule", ok = true, summary = ScheduleChecks.Summary(report), callId }, ct);
         await RunServices.Emit(ctx, "validation", new { iteration = c.Iteration, report }, ct);
         await _s.AgentCompleted(ctx, "validator", ScheduleChecks.Summary(report), clock.ElapsedMilliseconds, ct);
 

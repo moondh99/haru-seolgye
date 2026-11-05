@@ -21,6 +21,7 @@ Read `PRD.md`, `TRD.md`, and `TDD.md` before you change the design.
 | Restore tools | `dotnet tool restore` |
 | Build | `dotnet build` |
 | Test | `dotnet test` |
+| Test the UI | `node --test tests/Haru.Api.Tests/app.test.mjs` |
 | Test the scripts | `python3 -m unittest discover -s tests/scripts` |
 | Run all services | `dotnet run --project src/Haru.AppHost` |
 | Run one service | `dotnet run --project src/Haru.Mcp`, then `dotnet run --project src/Haru.Api` |

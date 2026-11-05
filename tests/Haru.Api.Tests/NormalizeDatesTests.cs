@@ -147,6 +147,24 @@ public class NormalizeDatesTests
     }
 
     [Fact]
+    public async Task Run_DistinctDeadlines_KeepTheirOwnResultIds()
+    {
+        var (_, run) = await RunAsync(null,
+            Scenario.Item("보고서", minutes: 60, deadline: "내일"),
+            Scenario.Item("메일", minutes: 30, deadline: "모레"));
+
+        var calls = NormalizeEvents(run, "tool_call").ToDictionary(
+            e => e.Data.GetProperty("args").GetProperty("expression").GetString()!,
+            e => e.Data.GetProperty("callId").GetString()!);
+        Assert.Equal(2, calls.Values.Distinct().Count());
+        var results = NormalizeEvents(run, "tool_result").ToDictionary(
+            e => e.Data.GetProperty("callId").GetString()!,
+            e => e.Data.GetProperty("summary").GetString());
+        Assert.Equal("→ 2026-11-06", results[calls["내일"]]);
+        Assert.Equal("→ 2026-11-07", results[calls["모레"]]);
+    }
+
+    [Fact]
     public async Task Run_NoDeadlinesAtAll_NeverCallsTheResolver()
     {
         var (h, _) = await RunAsync(null, Scenario.Item("보고서", minutes: 60), Scenario.Item("메일", minutes: 30));

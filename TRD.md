@@ -46,6 +46,7 @@ flowchart TD
 - 경로: `GET /api/config`(한도, `aiAvailable`), `POST /api/plan`(응답은 SSE 스트림), `GET /api/sample`(샘플 입력·결과, 기록된 실행 `events`), `POST /api/export`(`text/calendar`, `confirmed: true` 필요), `GET /health`, `GET /alive`이다. 필드와 오류 형식은 [docs/api-contract.md](docs/api-contract.md)가 정한다.
 - 한도: 입력 3,000자, 본문 64 KB, IP당 10분에 8회, 동시 계획 3개, 하루 250회(한국 표준시 KST), 계획 120초, 에이전트 호출 60초이다. 환경 변수로 바꾸는 값은 `HaruOptions.cs`에 있다.
 - 저장: 서버 코드에 데이터베이스가 없다. 사용 한도 계수는 메모리에만 둔다. 브라우저가 입력과 마지막 결과를 `localStorage`(`haru.v1`)에 저장하고 `지우기` 버튼이 지운다. Copilot 런타임이 남기는 파일은 9장에 있다.
+- 도구 이벤트: 호출과 결과에 같은 `callId`를 넣는다. UI는 이 값으로 병렬 호출의 결과를 연결한다. 기록된 샘플에도 식별자를 넣는다.
 - 동시 실행 한도(`BUSY`, 503): UI가 5초 간격으로 최대 12번 다시 요청한다. 기다리는 동안 안내 배너와 "대기 중" 상태를 보여 주고, `중지`로 멈출 수 있다. 12번 뒤에도 `BUSY`이면 아래 대체 경로로 간다.
 - AI를 쓸 수 없을 때: 입력 오류(`INPUT_EMPTY`, `INPUT_TOO_LONG`, `BAD_REQUEST`)와 `NO_TASKS`를 뺀 모든 오류에서 UI가 `GET /api/sample`을 불러온다. 항상 "내 입력으로 만든 결과가 아닙니다"를 함께 보여 준다.
   - 기록된 실제 실행(`sample-run.json`, SSE 이벤트 37개)이 있으면 재생한다. 배지는 "기록된 실행 재생 · AI 호출 없음"이다. `smoke_plan.py --save`가 기록을 만든다. 기록 파일이 있으면 api가 시작할 때 `plan`·`done` 이벤트가 있고 `error` 이벤트가 없는지 검사한다. 어긋나면 시작하지 않는다.
@@ -156,15 +157,16 @@ env Azure__SubscriptionId=<구독 ID> Azure__Location=koreacentral Azure__Resour
 
 ## 10. 테스트와 완료 기준
 ```bash
-dotnet test                                           # 단위·통합 테스트. 2026-11-05 결과: Mcp 421건, Api 853건, 실패 0건
+dotnet test                                           # 단위·통합 테스트. 2026-11-05 결과: Mcp 421건, Api 855건, 실패 0건
 python3 -m unittest discover -s tests/scripts        # 토큰 스크립트 오프라인 테스트 4건. Azure를 호출하지 않는다
+node --test tests/Haru.Api.Tests/app.test.mjs         # 배너와 병렬 도구 결과 표시 5건을 검사한다
 python3 tests/eval/smoke_plan.py --url <주소>          # 실서버 계획 1회 점검. --save는 기록을 저장한다
 python3 tests/eval/injection_eval.py --url <주소>      # 프롬프트 주입 11건. 사람이 실행한다
 ```
 - `Haru.Mcp.Tests`: 날짜 해석, 빈 시간대, 시간표 검증, ICS 생성, 실제 MCP 서버에 클라이언트로 붙는 통합 테스트(`McpServerLiveTests`)이다.
 - `Haru.Api.Tests`: 실제 `Haru.Api` 앱을 메모리에서 띄운다. 에이전트 실행기, MCP 게이트웨이, Copilot 호스트는 오프라인 가짜로 바꾼다. 경로 선택, repair, 정제, 사용 한도, 엔드포인트, 워크플로를 검사한다. 모델 품질은 위의 두 스크립트가 실서버로 확인한다.
 - 실측(실제 Copilot, 실제 MCP, 샘플 입력): 계획 1회가 28.7~37초이다. intake 4~5초, estimator·prioritizer 병렬 약 4초, scheduler 약 13초(도구 호출 2회), critic 4~6초, coach 약 3초이다. 결과는 유효, 부하 78~84%, 위반 0건, scheduler 1회이다. 주입 평가는 11개 중 11개 통과이다.
-- 완료 기준: 샘플 입력의 결과가 유효하고 위반 0건이다. 계획 1회가 120초 안에 끝난다. `confirmed` 없는 `POST /api/export`는 400 `NOT_CONFIRMED`이다. 토큰이 없어도 재생 또는 샘플로 핵심 화면이 동작한다. `dotnet test`가 통과한다(Mcp 421건, Api 853건, 2026-11-05 확인).
+- 완료 기준: 샘플 입력의 결과가 유효하고 위반 0건이다. 계획 1회가 120초 안에 끝난다. `confirmed` 없는 `POST /api/export`는 400 `NOT_CONFIRMED`이다. 토큰이 없어도 재생 또는 샘플로 핵심 화면이 동작한다. `dotnet test`가 통과한다(Mcp 421건, Api 855건, 2026-11-05 확인).
 
 ## 11. 위험과 한계
 - 실제 AI에는 Copilot 권한이 있는 토큰이 필요하다. 토큰이 없으면 기록 재생 또는 샘플이 나온다.

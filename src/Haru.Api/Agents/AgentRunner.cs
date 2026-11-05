@@ -5,8 +5,8 @@ namespace Haru.Api.Agents;
 
 public abstract record AgentSignal;
 public sealed record DeltaSignal(string Text) : AgentSignal;
-public sealed record ToolCallSignal(string Tool, IReadOnlyDictionary<string, object?> Args) : AgentSignal;
-public sealed record ToolResultSignal(string Tool, bool Ok, string Summary) : AgentSignal;
+public sealed record ToolCallSignal(string Tool, IReadOnlyDictionary<string, object?> Args, string CallId) : AgentSignal;
+public sealed record ToolResultSignal(string Tool, bool Ok, string Summary, string CallId) : AgentSignal;
 
 public sealed record AgentRunRequest(string AgentId, string UserPrompt, Func<AgentSignal, ValueTask>? OnSignal = null);
 

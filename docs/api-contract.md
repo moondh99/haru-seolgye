@@ -112,8 +112,8 @@ API는 `fixed` 블록끼리 이웃해서 생기는 `NO_BUFFER`를 위반으로 �
 | `run_started` | `{ runId, day, aiAvailable }` |
 | `agent_started` | `{ agent, role, model }` (`role`은 한국어 한 줄 설명) |
 | `agent_delta` | `{ agent, text }` |
-| `tool_call` | `{ agent, tool, args }` |
-| `tool_result` | `{ agent, tool, ok, summary }` |
+| `tool_call` | `{ agent, tool, args, callId }` |
+| `tool_result` | `{ agent, tool, ok, summary, callId }` |
 | `agent_completed` | `{ agent, summary, elapsedMs }` |
 | `tasks` | `{ tasks: TaskItem[] }` |
 | `schedule` | `{ iteration, blocks: Block[], deferred: Deferred[] }` |
@@ -124,6 +124,7 @@ API는 `fixed` 블록끼리 이웃해서 생기는 `NO_BUFFER`를 위반으로 �
 | `error` | `{ code, message, recoverable }`. `code`는 `NO_TASKS`(입력에서 할 일을 찾지 못함), `TIMEOUT`(시간 초과), `WORKFLOW_FAILED`(AI 응답 해석 실패, 검증 도구 연결 실패, 그 밖의 실패)다. `message`는 고정된 한국어 문장이다. |
 
 `error` 뒤에는 `done`이 오지 않는다. 스트림은 `plan`과 `done`으로 끝나거나 `error`로 끝난다.
+`callId`는 실행 안에서 유일한 문자열이다. 도구 호출과 결과는 같은 `callId`를 쓴다. UI는 완료 순서가 아니라 이 값으로 결과를 연결한다. 기록된 샘플에도 같은 규칙을 적용한다.
 UI는 오류를 받으면(스트림 시작 전 오류 포함) 안내 배너를 보이고 `GET /api/sample`의 결과를 대신 보인다. 기록된 실행이 있으면 "기록된 실행 재생 · AI 호출 없음", 없으면 "오프라인 샘플 · AI 호출 없음"으로 표시한다. 입력 문제(`INPUT_EMPTY`, `INPUT_TOO_LONG`, `BAD_REQUEST`, `NO_TASKS`)는 샘플로 바꾸지 않고 오류만 보인다.
 
 ## 3. MCP 서버 (`Haru.Mcp`, 내부 전용)

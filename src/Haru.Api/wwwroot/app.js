@@ -92,11 +92,11 @@ function toast(msg) {
 function banner(kind, title, message, actions = []) {
   const b = $('#banner');
   b.className = `banner ${kind}`; b.hidden = false;
-  b.replaceChildren(
+  b.replaceChildren(...[
     el('strong', { text: title }),
     message ? el('p', { text: message }) : null,
     actions.length ? el('div', { class: 'actions' }, ...actions.map((a) => el('button', { type: 'button', class: 'btn', text: a.label, onclick: a.run }))) : null,
-  );
+  ].filter((n) => n !== null));
   b.scrollIntoView({ block: 'nearest', behavior: motion() });
 }
 const hideBanner = () => { $('#banner').hidden = true; };
@@ -171,14 +171,15 @@ function onDelta(d) {
 function onToolCall(d) {
   const li = stepEl(d.agent);
   if (!li) return;
-  $('.tools', li).append(el('li', { class: 'tool', dataset: { state: 'running', tool: d.tool } },
+  $('.tools', li).append(el('li', { class: 'tool', dataset: { state: 'running', tool: d.tool, callId: d.callId } },
     el('code', { text: d.tool }), el('span', { class: 'args', text: brief(d.args) }), el('span', { class: 'res' })));
 }
 
 function onToolResult(d) {
   const li = stepEl(d.agent);
   if (!li) return;
-  const t = $$(`.tool[data-tool="${CSS.escape(String(d.tool))}"]`, li).find((n) => n.dataset.state === 'running');
+  const t = $$('.tool', li).find((n) =>
+    n.dataset.callId === d.callId && n.dataset.tool === d.tool && n.dataset.state === 'running');
   if (!t) return;
   t.dataset.state = d.ok ? 'ok' : 'fail';
   $('.res', t).textContent = d.summary ?? '';

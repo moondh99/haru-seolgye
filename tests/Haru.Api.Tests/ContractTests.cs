@@ -258,8 +258,8 @@ public class EventContractTests
     [InlineData("run_started", "aiAvailable,day,runId")]
     [InlineData("agent_started", "agent,model,role")]
     [InlineData("agent_completed", "agent,elapsedMs,summary")]
-    [InlineData("tool_call", "agent,args,tool")]
-    [InlineData("tool_result", "agent,ok,summary,tool")]
+    [InlineData("tool_call", "agent,args,callId,tool")]
+    [InlineData("tool_result", "agent,callId,ok,summary,tool")]
     [InlineData("tasks", "tasks")]
     [InlineData("schedule", "blocks,deferred,iteration")]
     [InlineData("validation", "iteration,report")]
@@ -271,6 +271,23 @@ public class EventContractTests
 
         Assert.NotEmpty(run.Of(name));
         Assert.All(run.Of(name), e => Assert.Equal(fields.Split(','), PlanShape.Names(e.Data)));
+    }
+
+    [Fact]
+    public async Task Event_ToolResults_MatchUniqueCallsById()
+    {
+        var run = await Scenario.Happy().RunAsync();
+        var calls = run.Of("tool_call").ToDictionary(e => e.Data.GetProperty("callId").GetString()!);
+        Assert.Equal(calls.Count, run.Of("tool_result").Count());
+        foreach (var result in run.Of("tool_result"))
+        {
+            var id = result.Data.GetProperty("callId").GetString()!;
+            Assert.False(string.IsNullOrWhiteSpace(id));
+            Assert.True(calls.Remove(id, out var call));
+            Assert.Equal(call.Data.GetProperty("agent").GetString(), result.Data.GetProperty("agent").GetString());
+            Assert.Equal(call.Data.GetProperty("tool").GetString(), result.Data.GetProperty("tool").GetString());
+        }
+        Assert.Empty(calls);
     }
 
     [Fact]

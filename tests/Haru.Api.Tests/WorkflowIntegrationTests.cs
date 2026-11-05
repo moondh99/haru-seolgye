@@ -129,14 +129,16 @@ public class WorkflowIntegrationTests
         var h = Scenario.Happy();
         h.Runner.Script("scheduler", WithSignals(Scenario.ValidSchedule(),
             new DeltaSignal("생각 중"),
-            new ToolCallSignal("find_free_slots", new Dictionary<string, object?> { ["minMinutes"] = 30 }),
-            new ToolResultSignal("find_free_slots", true, "빈 시간 2곳")));
+            new ToolCallSignal("find_free_slots", new Dictionary<string, object?> { ["minMinutes"] = 30 }, "scheduler-call"),
+            new ToolResultSignal("find_free_slots", true, "빈 시간 2곳", "scheduler-call")));
 
         var run = await h.RunAsync();
 
         Assert.Contains(run.Of("agent_delta"), e => e.Data.GetProperty("agent").GetString() == "scheduler");
         Assert.Contains(run.Of("tool_call"), e => e.Data.GetProperty("tool").GetString() == "find_free_slots");
         Assert.Contains(run.Of("tool_result"), e => e.Data.GetProperty("summary").GetString() == "빈 시간 2곳");
+        Assert.Equal("scheduler-call", run.Of("tool_call").Single(e => e.Data.GetProperty("agent").GetString() == "scheduler").Data.GetProperty("callId").GetString());
+        Assert.Equal("scheduler-call", run.Of("tool_result").Single(e => e.Data.GetProperty("agent").GetString() == "scheduler").Data.GetProperty("callId").GetString());
     }
 
     // (b) overlap once, then valid

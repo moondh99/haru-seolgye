@@ -189,17 +189,18 @@ public sealed class McpGateway(HaruOptions options, ILoggerFactory loggerFactory
                 return JsonSerializer.SerializeToElement(new { error = "Tool call limit reached. Answer with what you have." });
 
             var args = new Dictionary<string, object?>(arguments);
-            await signal(new ToolCallSignal(Name, ToolSummary.CompactArgs(args)));
+            var callId = Guid.NewGuid().ToString("N");
+            await signal(new ToolCallSignal(Name, ToolSummary.CompactArgs(args), callId));
             try
             {
                 var json = await gateway.CallAsync(Name, args, ct);
-                await signal(new ToolResultSignal(Name, true, ToolSummary.Of(Name, json)));
+                await signal(new ToolResultSignal(Name, true, ToolSummary.Of(Name, json), callId));
                 return json;
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 gateway.LogToolFailure(Name, e);
-                await signal(new ToolResultSignal(Name, false, "도구 호출에 실패했습니다."));
+                await signal(new ToolResultSignal(Name, false, "도구 호출에 실패했습니다.", callId));
                 return JsonSerializer.SerializeToElement(new { error = "The tool failed. Try once more or answer with what you have." });
             }
         }

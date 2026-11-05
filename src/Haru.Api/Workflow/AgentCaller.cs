@@ -90,8 +90,8 @@ public sealed class AgentCaller(IAgentRunner runner, AgentCatalog catalog, ILogg
     private static ValueTask Forward(IWorkflowContext ctx, string agent, AgentSignal signal, CancellationToken ct) => signal switch
     {
         DeltaSignal d => RunServices.Emit(ctx, "agent_delta", new { agent, text = d.Text }, ct),
-        ToolCallSignal c => RunServices.Emit(ctx, "tool_call", new { agent, tool = c.Tool, args = c.Args }, ct),
-        ToolResultSignal r => RunServices.Emit(ctx, "tool_result", new { agent, tool = r.Tool, ok = r.Ok, summary = r.Summary }, ct),
+        ToolCallSignal c => RunServices.Emit(ctx, "tool_call", new { agent, tool = c.Tool, args = c.Args, callId = c.CallId }, ct),
+        ToolResultSignal r => RunServices.Emit(ctx, "tool_result", new { agent, tool = r.Tool, ok = r.Ok, summary = r.Summary, callId = r.CallId }, ct),
         _ => ValueTask.CompletedTask,
     };
 

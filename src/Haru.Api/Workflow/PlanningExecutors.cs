@@ -103,8 +103,9 @@ public sealed class NormalizeExecutor : Executor<PlanContext, PlanContext>
             try
             {
                 var show = Interlocked.Increment(ref shown) <= MaxShownCalls;
+                var callId = Guid.NewGuid().ToString("N");
                 if (show)
-                    await emitter.EmitAsync("tool_call", new { agent = "normalize", tool = "resolve_date", args = new { expression } });
+                    await emitter.EmitAsync("tool_call", new { agent = "normalize", tool = "resolve_date", args = new { expression }, callId });
 
                 ResolvedDate value;
                 string summary;
@@ -122,7 +123,7 @@ public sealed class NormalizeExecutor : Executor<PlanContext, PlanContext>
 
                 lock (resolved) resolved[expression] = value;
                 if (show)
-                    await emitter.EmitAsync("tool_result", new { agent = "normalize", tool = "resolve_date", ok, summary });
+                    await emitter.EmitAsync("tool_result", new { agent = "normalize", tool = "resolve_date", ok, summary, callId });
             }
             finally
             {
